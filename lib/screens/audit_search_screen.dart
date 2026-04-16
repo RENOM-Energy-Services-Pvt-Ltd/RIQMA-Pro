@@ -446,6 +446,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
           ),
           const SizedBox(height: 16),
           // Search Bar
+          Container(
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
@@ -535,6 +536,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
                 const SizedBox(width: 8),
               ],
             ),
+          ),
         ],
       ),
     );

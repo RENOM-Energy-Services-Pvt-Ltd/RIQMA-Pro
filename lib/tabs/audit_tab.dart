@@ -7,6 +7,7 @@ import '../screens/audit/unplanned_audit_screen.dart';
 import '../screens/audit_main_categories_screen.dart';
 import '../services/sync_service.dart';
 import '../widgets/searchable_dropdown.dart';
+import '../services/audit_manager.dart';
 
 class AuditTab extends StatefulWidget {
   final String? assignedState;
@@ -157,9 +158,9 @@ class _AuditTabState extends State<AuditTab> {
                 final now = DateTime.now();
                 // Reset times to compare dates only
                 final today = DateTime(now.year, now.month, now.day);
-                final var target = DateTime(plannedDate.year, plannedDate.month, plannedDate.day);
+                final target = DateTime(plannedDate.year, plannedDate.month, plannedDate.day);
                 
-                final var diff = target.difference(today).inDays;
+                final diff = target.difference(today).inDays;
                 
                 if (diff > 0) {
                   statusText = '$diff Days Left';
@@ -253,7 +254,7 @@ class _AuditTabState extends State<AuditTab> {
 
   /// Full 4-step wizard bottom-sheet: State → Site → Model → Turbine.
   /// Pre-populated from planData but allows overrides.
-  void _showAuditWizard(BuildContext context, Map<String, dynamic> planData, String planId) {
+  Future<void> _showAuditWizard(BuildContext context, Map<String, dynamic> planData, String planId) async {
     // Master data lists
     var allStates = <Map<String, dynamic>>[];
     var allSites = <Map<String, dynamic>>[];
