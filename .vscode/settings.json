@@ -1,0 +1,6 @@
+{
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "git.postCommitCommand": "push",
+    "git.autofetch": true,
+    "git.confirmSync": false
+}
