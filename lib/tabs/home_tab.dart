@@ -78,10 +78,9 @@ class HomeTab extends StatelessWidget {
                 children: [
                   const Text(
                     'Dashboard Overview',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -113,10 +112,9 @@ class HomeTab extends StatelessWidget {
                   // Site Performance Section
                   const Text(
                     'Site Performance',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -140,10 +138,9 @@ class HomeTab extends StatelessWidget {
                   // Recent Activity Section
                   const Text(
                     'Recent Activity',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -254,9 +251,9 @@ class HomeTab extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -266,7 +263,6 @@ class HomeTab extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
                   ),
                 ),
               ],
@@ -304,9 +300,9 @@ class HomeTab extends StatelessWidget {
                 ),
                 Text(
                   '$completed/$total Completed',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -314,8 +310,7 @@ class HomeTab extends StatelessWidget {
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: percentage,
-              backgroundColor: const Color(0xFFEEEEEE),
-              color: const Color(0xFF00897B),
+              color: Theme.of(context).colorScheme.primary,
               minHeight: 8,
               borderRadius: BorderRadius.circular(4),
             ),

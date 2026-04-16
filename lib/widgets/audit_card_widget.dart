@@ -51,17 +51,18 @@ class AuditCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _baseColor;
     final progress = total > 0 ? (total - pending) / total : 0.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.6), width: 2.5),
+          border: Border.all(color: color.withValues(alpha: isDark ? 0.3 : 0.6), width: 2.5),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.08),
+              color: color.withValues(alpha: isDark ? 0.02 : 0.08),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -78,8 +79,8 @@ class AuditCard extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      color.withValues(alpha: 0.04),
-                      color.withValues(alpha: 0.12),
+                      color.withValues(alpha: isDark ? 0.02 : 0.04),
+                      color.withValues(alpha: isDark ? 0.06 : 0.12),
                     ],
                   ),
                 ),
@@ -104,10 +105,10 @@ class AuditCard extends StatelessWidget {
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15, // Reduced from 19
                       fontWeight: FontWeight.bold, // Switched from w900 for sharper look
-                      color: Color(0xFF1A1F36),
+                      color: Theme.of(context).colorScheme.onSurface,
                       height: 1.1,
                       letterSpacing: -0.2,
                     ),

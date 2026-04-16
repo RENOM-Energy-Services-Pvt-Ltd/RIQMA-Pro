@@ -446,10 +446,12 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(20.0),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).cardColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.black.withValues(alpha: 0.3) 
+                  : Colors.black.withValues(alpha: 0.05),
               blurRadius: 20,
               offset: const Offset(0, -5),
             ),
@@ -581,7 +583,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                     'body': Style(
                       fontSize: FontSize(14.0),
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1A1F36),
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontFamily: 'Outfit',
                       margin: Margins.zero,
                       padding: HtmlPaddings.zero,
@@ -923,26 +925,27 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
   }
 
   Widget _buildElectricCard({required Widget child}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16), // Increased from 4
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04), // Softer shadow
+            color: isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: const Color(0xFF1A237E).withValues(alpha: 0.02),
+            color: const Color(0xFF1A237E).withValues(alpha: isDark ? 0.05 : 0.02),
             blurRadius: 2,
             offset: const Offset(0, 1),
           ),
         ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.05), width: 1),
+        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1), width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0), // Increased from 16
+        padding: const EdgeInsets.all(20.0),
         child: child,
       ),
     );
@@ -967,7 +970,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
         suffixIcon: suffixIcon,
         prefixIcon: Padding(
           padding: const EdgeInsets.only(bottom: 40),
-          child: Icon(icon, color: const Color(0xFF00E5FF), size: 20),
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -975,13 +978,13 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade200),
+          borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
         ),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.black26 : const Color(0xFFF8FAFC),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF00E5FF), width: 1.5),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
         ),
         contentPadding: const EdgeInsets.all(16),
       ),
@@ -1040,9 +1043,9 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
         decoration: BoxDecoration(
-          color: isSelected ? color : Colors.white,
+          color: isSelected ? color : Theme.of(context).cardColor,
           border: Border.all(
-            color: isSelected ? color : Colors.grey.shade200, 
+            color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1), 
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -1065,7 +1068,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[800],
+                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                 fontSize: compact ? 11 : 13,
                 fontFamily: 'Outfit',

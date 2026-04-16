@@ -69,19 +69,50 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
 
     return MaterialApp(
       navigatorKey: navigatorKey,
       title: 'RiQMA Pro',
-      themeMode: ThemeMode.light, // Force Light Mode
-      theme: ThemeData.light(useMaterial3: true).copyWith(
+      debugShowCheckedModeBanner: false,
+      themeMode: themeProvider.themeMode,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
           elevation: 0,
         ),
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00897B)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF00897B),
+          brightness: Brightness.light,
+        ),
+        cardTheme: CardTheme(
+          color: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E1E1E),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF00897B),
+          brightness: Brightness.dark,
+        ),
+        cardTheme: CardTheme(
+          color: const Color(0xFF1E1E1E),
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
       // Show Splash Screen first, then transition to AuthWrapper
       home: WindFarmSplash(

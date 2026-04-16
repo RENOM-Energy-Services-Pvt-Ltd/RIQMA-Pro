@@ -51,13 +51,15 @@ class _AuditTabState extends State<AuditTab> {
               final isReady = SyncService.instance.isReady;
               final isSyncing = SyncService.instance.isSyncing;
               
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              
               return Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: isReady 
-                      ? const Color(0xFFE8F5E9) 
-                      : const Color(0xFFE3F2FD),
+                      ? (isDark ? Colors.green.withValues(alpha: 0.2) : const Color(0xFFE8F5E9))
+                      : (isDark ? Colors.blue.withValues(alpha: 0.2) : const Color(0xFFE3F2FD)),
                   border: Border(
                     bottom: BorderSide(
                       color: isReady 
@@ -83,7 +85,9 @@ class _AuditTabState extends State<AuditTab> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: isReady ? Colors.green[900] : Colors.blue[900],
+                              color: isReady 
+                                  ? (isDark ? Colors.green[300] : Colors.green[900]) 
+                                  : (isDark ? Colors.blue[300] : Colors.blue[900]),
                             ),
                           ),
                           if (isSyncing) ...[
@@ -133,9 +137,9 @@ class _AuditTabState extends State<AuditTab> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.assignment_turned_in_outlined, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('No pending audits found', style: TextStyle(color: Colors.grey)),
+                  Icon(Icons.assignment_turned_in_outlined, size: 64, color: Theme.of(context).colorScheme.outline),
+                  const SizedBox(height: 16),
+                  Text('No pending audits found', style: TextStyle(color: Theme.of(context).colorScheme.outline)),
                 ],
               ),
             );
@@ -182,9 +186,9 @@ class _AuditTabState extends State<AuditTab> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFE0F2F1), // Teal 50
-                    child: Icon(Icons.wind_power, color: Color(0xFF00897B)),
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    child: Icon(Icons.wind_power, color: Theme.of(context).colorScheme.onPrimaryContainer),
                   ),
                   title: Text(
                     '${data['site_name']} - ${data['turbine_model'] ?? 'Unknown Model'}',
@@ -209,10 +213,10 @@ class _AuditTabState extends State<AuditTab> {
                   trailing: plannedTs != null
                       ? Text(
                           DateFormat('dd MMM yy').format(plannedTs.toDate()),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF1A1F36),
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         )
                       : null,

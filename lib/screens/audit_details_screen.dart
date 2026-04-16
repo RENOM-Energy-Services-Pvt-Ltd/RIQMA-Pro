@@ -34,7 +34,6 @@ class AuditDetailsScreen extends StatelessWidget {
             Text(
               '$siteName - $turbineName',
               style: const TextStyle(
-                color: Colors.black,
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
@@ -48,10 +47,10 @@ class AuditDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -72,7 +71,9 @@ class AuditDetailsScreen extends StatelessWidget {
                 // Summary bar
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  color: Colors.red.shade50,
+                  color: Theme.of(context).brightness == Brightness.dark 
+                      ? Colors.red.withValues(alpha: 0.2) 
+                      : Colors.red.shade50,
                   child: Row(
                     children: [
                       Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 20),
@@ -160,14 +161,14 @@ class AuditDetailsScreen extends StatelessWidget {
                               Icon(
                                 Icons.folder_outlined,
                                 size: 14,
-                                color: Colors.blueGrey[400],
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 subCategory,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.blueGrey[600],
+                                  color: Theme.of(context).colorScheme.primary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),

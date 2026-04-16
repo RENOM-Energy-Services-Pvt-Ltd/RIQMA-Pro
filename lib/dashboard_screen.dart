@@ -142,7 +142,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
       child: Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
         title: Row(
@@ -158,7 +157,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Text(
                 _getDisplayName(),
                 style: const TextStyle(
-                  color: Colors.black87,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -169,7 +167,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
+            icon: const Icon(Icons.notifications_outlined),
             onPressed: () {
               Navigator.push(
                 context,
@@ -178,7 +176,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black),
+            icon: const Icon(Icons.settings_outlined),
             onPressed: () {
               Navigator.push(
                 context,
@@ -187,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.black),
+            icon: const Icon(Icons.logout),
             onPressed: () => _showLogoutConfirmation(context),
           ),
         ],
@@ -213,8 +211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: const Color(0xFF00897B),
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
       ),
