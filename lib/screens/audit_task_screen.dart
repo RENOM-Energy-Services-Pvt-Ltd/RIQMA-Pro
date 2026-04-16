@@ -435,6 +435,8 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                         }
                       },
                       onCapturePhoto: () => _capturePhoto(taskId),
+                      turbineModelRef: widget.mainCategoryRef, // Using mainCategoryRef as turbineModelRef based on context in AuditTaskScreen
+                      draftId: widget.draftId,
                     );
                   },
                 );
@@ -513,9 +515,11 @@ class TaskPageItem extends StatefulWidget {
   final Map<String, dynamic> initialAnswer;
   final void Function(String key, dynamic value, {bool shouldSetState}) onAnswerChanged;
   final VoidCallback onCapturePhoto;
+  final DocumentReference turbineModelRef;
+  final String? draftId;
 
   const TaskPageItem({
-    required this.taskData, required this.referenceName, required this.rootCauses, required this.initialAnswer, required this.onAnswerChanged, required this.onCapturePhoto, super.key,
+    required this.taskData, required this.referenceName, required this.rootCauses, required this.initialAnswer, required this.onAnswerChanged, required this.onCapturePhoto, required this.turbineModelRef, this.draftId, super.key,
   });
 
   @override

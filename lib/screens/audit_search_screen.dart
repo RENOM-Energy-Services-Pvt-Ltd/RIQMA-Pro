@@ -53,7 +53,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
   List<_SearchableTask> _allTasks = [];
   List<_SearchableTask> _filteredTasks = [];
   bool _isLoading = true;
-  final bool _searchInObservations = false;
+  bool _searchInObservations = false;
   String _query = '';
 
   late AnimationController _animController;
