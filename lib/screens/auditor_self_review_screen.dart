@@ -34,12 +34,13 @@ class AuditorSelfReviewScreen extends StatelessWidget {
     var correctedCount = 0;
 
     for (final entry in auditData.values) {
+      if (entry['is_corrected'] == true) correctedCount++;
+
       final status = entry['status'];
       if (status == 'OK') {
         okCount++;
       } else if (status == 'Not OK') {
         notOkCount++;
-        if (entry['is_corrected'] == true) correctedCount++;
       } else if (status == 'NA') {
         naCount++;
       }
@@ -49,7 +50,8 @@ class AuditorSelfReviewScreen extends StatelessWidget {
     final grouped = <String, List<MapEntry<String, Map<String, dynamic>>>>{};
     for (final entry in auditData.entries) {
       final status = entry.value['status'];
-      if (status == 'Not OK') {
+      final isCorrected = entry.value['is_corrected'] == true;
+      if (status == 'Not OK' || isCorrected) {
         final categoryName = entry.value['main_category_name']?.toString() ?? 'Uncategorized';
         grouped.putIfAbsent(categoryName, () => []).add(entry);
       }

@@ -43,6 +43,7 @@ class HomeTab extends StatelessWidget {
 
         Query auditQuery = FirebaseFirestore.instance
               .collection('audit_submissions')
+              .where('admin_status', isEqualTo: 'Approved')
               .orderBy('timestamp', descending: true);
 
         if (assignedState != null && assignedState!.isNotEmpty) {
@@ -78,7 +79,7 @@ class HomeTab extends StatelessWidget {
                 children: [
                   const Text(
                     'Dashboard Overview',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
@@ -87,6 +88,7 @@ class HomeTab extends StatelessWidget {
                   
                   // Metrics Cards
                   _buildMetricCard(
+                    context: context,
                     title: 'Total Planned',
                     value: '$totalPlanned',
                     icon: Icons.assignment_outlined,
@@ -94,6 +96,7 @@ class HomeTab extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _buildMetricCard(
+                    context: context,
                     title: 'Actual',
                     value: '$actual',
                     icon: Icons.check_circle_outline,
@@ -101,6 +104,7 @@ class HomeTab extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _buildMetricCard(
+                    context: context,
                     title: 'Completion Rate',
                     value: '$completionRate%',
                     icon: Icons.pie_chart_outline,
@@ -112,7 +116,7 @@ class HomeTab extends StatelessWidget {
                   // Site Performance Section
                   const Text(
                     'Site Performance',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -126,6 +130,7 @@ class HomeTab extends StatelessWidget {
                     final percentage = total > 0 ? completed / total : 0.0;
                     
                     return _buildSitePerformanceRow(
+                      context: context,
                       siteName: siteName,
                       completed: completed,
                       total: total,
@@ -138,7 +143,7 @@ class HomeTab extends StatelessWidget {
                   // Recent Activity Section
                   const Text(
                     'Recent Activity',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -225,6 +230,7 @@ class HomeTab extends StatelessWidget {
   }
 
   Widget _buildMetricCard({
+    required BuildContext context,
     required String title,
     required String value,
     required IconData icon,
@@ -274,6 +280,7 @@ class HomeTab extends StatelessWidget {
   }
 
   Widget _buildSitePerformanceRow({
+    required BuildContext context,
     required String siteName,
     required int completed,
     required int total,

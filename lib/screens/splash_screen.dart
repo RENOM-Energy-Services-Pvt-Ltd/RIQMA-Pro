@@ -571,12 +571,13 @@ class TurbineBladesPainter extends CustomPainter {
     
     // Draw 3 Blades
     for (var i = 0; i < 3; i++) {
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(i * 120 * (math.pi / 180));
-      
+      canvas
+        ..save()
+        ..translate(center.dx, center.dy)
+        ..rotate(i * 120 * (math.pi / 180));
+
       _drawBlade(canvas, i);
-      
+
       canvas.restore();
     }
 
@@ -606,20 +607,16 @@ class TurbineBladesPainter extends CustomPainter {
       ..close();
 
     // Draw White Blade
-    canvas.drawPath(path, paint);
-
-    // Draw Tip with Clipping
-    // Clip Rect: x="-25" y="-160" width="50" height="35"
-    canvas.save();
-    canvas.clipPath(path); // Clip to blade shape
-    
-    final tipPaint = Paint()..color = tipColor;
-    // The rect covers the top part of the blade
-    canvas.drawRect(
-      const Rect.fromLTWH(-25, -160, 50, 35),
-      tipPaint,
-    );
-    canvas.restore();
+    canvas
+      ..drawPath(path, paint)
+      // Draw Tip with Clipping
+      ..save()
+      ..clipPath(path)
+      ..drawRect(
+        const Rect.fromLTWH(-25, -160, 50, 35),
+        Paint()..color = tipColor,
+      )
+      ..restore();
   }
 
   void _drawHub(Canvas canvas, Offset center) {
@@ -651,49 +648,40 @@ class BirdPainter extends CustomPainter {
     final beakPaint = Paint()..color = const Color(0xFFFFEB3B); // Yellow
     final wingPaint = Paint()..color = const Color(0xFFFF7043); // Orange
 
-    canvas.save();
-    // Scale to fit size
-    // Original path coords roughly 0,0 to 30,10.
     final scale = size.width / 30;
-    canvas.scale(scale);
-
-    // Beak (Simple triangle or implied? Path not provided for beak, assuming part of body or simple add)
-    // "Bird Body: M0,0 Q15,-5 30,0 Q15,8 0,0 Z"
-    // Does not look like it includes beak.
-    // I'll draw a small beak triangle at the head (30,0).
-    final beakPath = Path()
-      ..moveTo(28, -2)
-      ..lineTo(35, 0)
-      ..lineTo(28, 2)
-      ..close();
-    canvas.drawPath(beakPath, beakPaint);
-
-    // Body
-    final bodyPath = Path()
-      ..moveTo(0, 0)
-      ..quadraticBezierTo(15, -5, 30, 0)
-      ..quadraticBezierTo(15, 8, 0, 0)
-      ..close();
-    canvas.drawPath(bodyPath, bodyPaint);
-
-    // Wing
-    // Wing Path: M8,-2 Q18,-18 28,-2 Q18,-6 8,-2 Z
-    // We apply scale transform to wing for flapping
-    // Pivot around (18, -2) approx center base of wing
-    canvas.save();
-    canvas.translate(18, -2);
-    canvas.scale(1.0, wingScale);
-    canvas.translate(-18, 2);
-
-    final wingPath = Path()
-      ..moveTo(8, -2)
-      ..quadraticBezierTo(18, -18, 28, -2)
-      ..quadraticBezierTo(18, -6, 8, -2)
-      ..close();
-    canvas.drawPath(wingPath, wingPaint);
-    
-    canvas.restore();
-    canvas.restore();
+    canvas
+      ..save()
+      ..scale(scale)
+      ..drawPath(
+        Path()
+          ..moveTo(28, -2)
+          ..lineTo(35, 0)
+          ..lineTo(28, 2)
+          ..close(),
+        beakPaint,
+      )
+      ..drawPath(
+        Path()
+          ..moveTo(0, 0)
+          ..quadraticBezierTo(15, -5, 30, 0)
+          ..quadraticBezierTo(15, 8, 0, 0)
+          ..close(),
+        bodyPaint,
+      )
+      ..save()
+      ..translate(18, -2)
+      ..scale(1.0, wingScale)
+      ..translate(-18, 2)
+      ..drawPath(
+        Path()
+          ..moveTo(8, -2)
+          ..quadraticBezierTo(18, -18, 28, -2)
+          ..quadraticBezierTo(18, -6, 8, -2)
+          ..close(),
+        wingPaint,
+      )
+      ..restore()
+      ..restore();
   }
 
   @override
@@ -765,25 +753,19 @@ class TransmissionLinesPainter extends CustomPainter {
     const w = 30.0;
     const h = 20.0;
 
-    canvas.save();
-    canvas.translate(pos.dx, pos.dy);
-    canvas.scale(scale);
-    canvas.translate(-w/2, -h); // Draw sitting ON the line/ground
-
-    // Box
     const rect = Rect.fromLTWH(0, 0, w, h);
-    canvas.drawRect(rect, paint);
-    canvas.drawRect(rect, detailPaint);
-
-    // Details (Grid)
-    canvas.drawLine(const Offset(5, 5), const Offset(25, 5), detailPaint);
-    canvas.drawLine(const Offset(5, 10), const Offset(25, 10), detailPaint);
-    canvas.drawLine(const Offset(5, 15), const Offset(25, 15), detailPaint);
-
-    // Insulator / Connector (Small stick up)
-    canvas.drawLine(const Offset(w/2, 0), const Offset(w/2, -10), detailPaint);
-
-    canvas.restore();
+    canvas
+      ..save()
+      ..translate(pos.dx, pos.dy)
+      ..scale(scale)
+      ..translate(-w / 2, -h)
+      ..drawRect(rect, paint)
+      ..drawRect(rect, detailPaint)
+      ..drawLine(const Offset(5, 5), const Offset(25, 5), detailPaint)
+      ..drawLine(const Offset(5, 10), const Offset(25, 10), detailPaint)
+      ..drawLine(const Offset(5, 15), const Offset(25, 15), detailPaint)
+      ..drawLine(const Offset(w / 2, 0), const Offset(w / 2, -10), detailPaint)
+      ..restore();
   }
 
   @override

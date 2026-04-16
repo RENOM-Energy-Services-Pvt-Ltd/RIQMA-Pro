@@ -1,5 +1,6 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -8,6 +9,8 @@ class ActivityLogScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -18,13 +21,16 @@ class ActivityLogScreen extends StatelessWidget {
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('activity_logs')
-            .orderBy('timestamp', descending: true)
-            .limit(50) // Limit to recent 50 logs to prevent overload
-            .snapshots(),
-        builder: (context, snapshot) {
+      body: currentUser == null
+          ? const Center(child: Text('Please log in to view logs'))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('activity_logs')
+                  .where('userId', isEqualTo: currentUser.uid)
+                  .orderBy('timestamp', descending: true)
+                  .limit(50)
+                  .snapshots(),
+              builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
@@ -119,8 +125,15 @@ class ActivityLogScreen extends StatelessWidget {
   }
 
   String _formatTimestamp(DateTime date) {
+    final localDate = date.toLocal();
     final now = DateTime.now();
-    final difference = now.difference(date);
+    
+    // Handle potential future timestamps due to server/device clock drift
+    if (localDate.isAfter(now)) {
+      return 'Just now';
+    }
+
+    final difference = now.difference(localDate);
 
     if (difference.inMinutes < 1) {
       return 'Just now';
@@ -131,7 +144,7 @@ class ActivityLogScreen extends StatelessWidget {
     } else if (difference.inDays < 7) {
       return '${difference.inDays}d ago';
     } else {
-      return DateFormat('dd MMM yyyy, HH:mm').format(date);
+      return DateFormat('dd MMM yyyy, hh:mm a').format(localDate);
     }
   }
 }

@@ -164,6 +164,8 @@ class NotificationService {
             importance: Importance.high,
             priority: Priority.high,
             playSound: true,
+            showWhen: true,
+            when: message.sentTime?.millisecondsSinceEpoch,
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,

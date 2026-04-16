@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
 import 'dashboard_screen.dart';
@@ -24,6 +25,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   // 1. This MUST be the first line
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. Initialize date formatting
+  await initializeDateFormatting();
   
   // Note: AuditManager is initialized when starting an audit with a specific draftId
   // Do NOT initialize it here without a draftId
@@ -89,10 +93,9 @@ class MyApp extends StatelessWidget {
           seedColor: const Color(0xFF00897B),
           brightness: Brightness.light,
         ),
-        cardTheme: CardTheme(
+        cardTheme: const CardThemeData(
           color: Colors.white,
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
       darkTheme: ThemeData(
@@ -108,10 +111,9 @@ class MyApp extends StatelessWidget {
           seedColor: const Color(0xFF00897B),
           brightness: Brightness.dark,
         ),
-        cardTheme: CardTheme(
-          color: const Color(0xFF1E1E1E),
+        cardTheme: const CardThemeData(
+          color: Color(0xFF1E1E1E),
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
       // Show Splash Screen first, then transition to AuthWrapper

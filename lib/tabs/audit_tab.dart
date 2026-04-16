@@ -133,7 +133,7 @@ class _AuditTabState extends State<AuditTab> {
           final docs = snapshot.data?.docs ?? [];
 
           if (docs.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -501,21 +501,22 @@ class _AuditTabState extends State<AuditTab> {
                                         setSheetState(() => selectedTurbineId = value);
                                       },
                                       items: () {
-                                        final sorted = List<Map<String, dynamic>>.from(visibleTurbines);
-                                        sorted.sort((a, b) {
-                                          final aHas = turbineDrafts[a['id']] ?? false;
-                                          final bHas = turbineDrafts[b['id']] ?? false;
-                                          if (aHas && !bHas) return -1;
-                                          if (!aHas && bHas) return 1;
-                                          return 0;
-                                        });
-                                        return sorted.map((doc) => SearchableDropdownItem<String>(
-                                          value: doc['id'] as String,
-                                          label: doc['turbine_name']?.toString() ??
-                                              doc['turbine_id']?.toString() ?? 'N/A',
-                                          icon: Icons.wind_power,
-                                          showRecentIndicator: turbineDrafts[doc['id']] ?? false,
-                                        )).toList();
+                                        return (List<Map<String, dynamic>>.from(visibleTurbines)
+                                          ..sort((a, b) {
+                                            final aHas = turbineDrafts[a['id']] ?? false;
+                                            final bHas = turbineDrafts[b['id']] ?? false;
+                                            if (aHas && !bHas) return -1;
+                                            if (!aHas && bHas) return 1;
+                                            return 0;
+                                          }))
+                                            .map((doc) => SearchableDropdownItem<String>(
+                                              value: doc['id'] as String,
+                                              label: doc['turbine_name']?.toString() ??
+                                                  doc['turbine_id']?.toString() ?? 'N/A',
+                                              icon: Icons.wind_power,
+                                              showRecentIndicator: turbineDrafts[doc['id']] ?? false,
+                                            ))
+                                            .toList();
                                       }(),
                                     ),
                                   ),
