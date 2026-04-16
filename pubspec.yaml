@@ -1,0 +1,57 @@
+name: riqma_pro
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_html: ^3.0.0-beta.2
+  firebase_core: ^4.2.1
+  firebase_auth: ^6.1.2
+  cloud_firestore: ^6.1.0
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  firebase_storage: ^13.0.4
+  intl: ^0.20.2
+  flutter_svg: ^2.2.3
+  provider: ^6.1.5+1
+  package_info_plus: ^9.0.1
+  excel: ^4.0.0
+  pdf: ^3.10.0
+  printing: ^5.11.0
+  share_plus: ^12.0.2
+  open_file: ^3.3.2
+  firebase_messaging: ^16.1.0
+  flutter_local_notifications: ^21.0.0
+  flutter_sticky_header: ^0.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon_1024.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon_1024.png"
+    background_color: "#ffffff"
+    theme_color: "#ffffff"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icon/
