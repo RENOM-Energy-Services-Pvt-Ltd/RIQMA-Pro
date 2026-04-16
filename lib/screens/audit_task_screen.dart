@@ -699,10 +699,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                 ),
                 if (status == 'Not OK') ...[
                   const SizedBox(height: 16),
-                  const Text(
-                    'Severity Level',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
-                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -932,17 +928,23 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(16), // Increased from 4
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A237E).withValues(alpha: 0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.04), // Softer shadow
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: const Color(0xFF1A237E).withValues(alpha: 0.02),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
           ),
         ],
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.05), width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(20.0), // Increased from 16
         child: child,
       ),
     );
@@ -959,24 +961,31 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
       controller: controller,
       onChanged: onChanged,
       maxLines: 3,
+      style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
         alignLabelWithHint: true,
         suffixIcon: suffixIcon,
         prefixIcon: Padding(
           padding: const EdgeInsets.only(bottom: 40),
-          child: Icon(icon, color: const Color(0xFF00E5FF)),
+          child: Icon(icon, color: const Color(0xFF00E5FF), size: 20),
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
         filled: true,
-        fillColor: const Color(0xFFF5F7FA),
+        fillColor: const Color(0xFFF8FAFC),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFF00E5FF), width: 1.5),
         ),
+        contentPadding: const EdgeInsets.all(16),
       ),
     );
   }
@@ -1028,28 +1037,41 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: compact ? 6 : 10),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
         decoration: BoxDecoration(
           color: isSelected ? color : Colors.white,
-          border: Border.all(color: isSelected ? color : Colors.grey.shade300, width: 1.5),
-          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade200, 
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            )
+          ] : null,
         ),
         child: Column(
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.white : Colors.grey[400],
-              size: compact ? 16 : 20,
+              color: isSelected ? Colors.white : Colors.grey[500],
+              size: compact ? 18 : 24,
             ),
-            SizedBox(height: compact ? 2 : 4),
+            const SizedBox(height: 6),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[700],
-                fontWeight: FontWeight.bold,
-                fontSize: compact ? 11 : 12,
+                color: isSelected ? Colors.white : Colors.grey[800],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                fontSize: compact ? 11 : 13,
+                fontFamily: 'Outfit',
+                letterSpacing: 0.5,
               ),
             ),
           ],

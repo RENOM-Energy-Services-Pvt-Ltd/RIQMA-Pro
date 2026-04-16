@@ -271,6 +271,7 @@ class _AuditTabState extends State<AuditTab> {
     String? selectedSiteId;
     String? selectedModelId;
     String? selectedTurbineId;
+    final turbineDrafts = <String, bool>{};
 
     var isLoading = true;
 
@@ -323,18 +324,31 @@ class _AuditTabState extends State<AuditTab> {
         final ref = doc['turbinemodel_ref'] as DocumentReference?;
         return siteRef?.id == selectedSiteId && ref == modelRef;
       }).toList();
+      
+      // Update drafts map for visible turbines
+      Future.microtask(() async {
+        for (var turbine in visibleTurbines) {
+          final dId = '${planId}_${turbine['id']}';
+          final exists = await AuditManager.draftExists(dId);
+          turbineDrafts[turbine['id'] as String] = exists;
+        }
+        setSheetState(() {});
+      });
+
       setSheetState(() {});
     }
 
-    final turbineDrafts = <String, bool>{};
     if (visibleTurbines.isNotEmpty) {
       for (var turbine in visibleTurbines) {
         final dId = '${planId}_${turbine['id']}';
-        final exists = await AuditManager.draftExists(dId);
-        turbineDrafts[turbine['id'] as String] = exists;
+        // unawaited
+        AuditManager.draftExists(dId).then((exists) {
+          turbineDrafts[turbine['id'] as String] = exists;
+        });
       }
     }
 
+    if (!context.mounted) return;
     showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -396,6 +410,17 @@ class _AuditTabState extends State<AuditTab> {
                       if (planData['turbinemodel_ref'] is DocumentReference) {
                         applyModelFilter((planData['turbinemodel_ref'] as DocumentReference).id, setSheetState);
                       }
+                      
+                      // Final draft check refresh
+                      Future.microtask(() async {
+                        for (var turbine in visibleTurbines) {
+                          final dId = '${planId}_${turbine['id']}';
+                          final exists = await AuditManager.draftExists(dId);
+                          turbineDrafts[turbine['id'] as String] = exists;
+                        }
+                        setSheetState(() {});
+                      });
+
                       setSheetState(() {});
                     });
                   }

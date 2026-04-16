@@ -397,11 +397,14 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                       itemBuilder: (context, index) {
                         final item = _filteredItems[index];
                         final isSelected = item.value == widget.selectedValue;
+                        final isRecent = !isSelected && item.showRecentIndicator;
 
                         return Material(
                           color: isSelected
                               ? const Color(0xFF00897B).withValues(alpha: 0.08)
-                              : Colors.transparent,
+                              : isRecent
+                                  ? Colors.amber.withValues(alpha: 0.05) // Subtle amber for in-progress
+                                  : Colors.transparent,
                           child: InkWell(
                             onTap: () => Navigator.of(context).pop(item.value),
                             child: Padding(
@@ -418,15 +421,19 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                                         color: isSelected
                                             ? const Color(0xFF00897B)
                                                 .withValues(alpha: 0.15)
-                                            : Colors.grey.shade100,
+                                            : isRecent
+                                                ? Colors.amber.withValues(alpha: 0.15)
+                                                : Colors.grey.shade100,
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Icon(
-                                        item.icon,
+                                        isRecent ? Icons.hourglass_bottom_rounded : item.icon, // Pending icon
                                         size: 20,
                                         color: isSelected
                                             ? const Color(0xFF00897B)
-                                            : Colors.grey.shade600,
+                                            : isRecent
+                                                ? Colors.amber.shade800
+                                                : Colors.grey.shade600,
                                       ),
                                     ),
                                     const SizedBox(width: 14),
@@ -440,12 +447,14 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                                           item.label,
                                           style: TextStyle(
                                             fontSize: 15,
-                                            fontWeight: isSelected
+                                            fontWeight: (isSelected || isRecent)
                                                 ? FontWeight.w600
                                                 : FontWeight.w500,
                                             color: isSelected
                                                 ? const Color(0xFF00897B)
-                                                : Colors.black87,
+                                                : isRecent
+                                                    ? Colors.amber.shade900
+                                                    : Colors.black87,
                                           ),
                                         ),
                                         if (item.subtitle != null) ...[
@@ -454,7 +463,7 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                                             item.subtitle!,
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Colors.grey.shade600,
+                                              color: isRecent ? Colors.amber.shade700 : Colors.grey.shade600,
                                             ),
                                           ),
                                         ],
@@ -474,13 +483,27 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                                         color: Colors.white,
                                       ),
                                     ),
-                                  if (!isSelected && item.showRecentIndicator)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8),
-                                      child: Icon(
-                                        Icons.history_toggle_off_rounded,
-                                        size: 18,
-                                        color: Color(0xFFF57C00), // Amber/Orange for "recent/in-progress"
+                                  if (isRecent)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.amber.shade300, width: 0.5),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'PENDING',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.amber.shade800,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                 ],

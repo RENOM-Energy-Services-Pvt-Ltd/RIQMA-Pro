@@ -12,15 +12,22 @@ class AuditorSelfReviewScreen extends StatelessWidget {
   final VoidCallback onConfirmSubmit;
   final String siteName;
   final String turbineName;
+  final int totalTasks;
+  final int pendingCount;
 
   const AuditorSelfReviewScreen({
-    required this.auditData, required this.onConfirmSubmit, required this.siteName, required this.turbineName, super.key,
+    required this.auditData,
+    required this.onConfirmSubmit,
+    required this.siteName,
+    required this.turbineName,
+    required this.totalTasks,
+    required this.pendingCount,
+    super.key,
   });
 
   @override
   Widget build(BuildContext context) {
     // ── Compute summary counts ──
-    final totalTasks = auditData.length;
     var okCount = 0;
     var notOkCount = 0;
     var naCount = 0;
@@ -57,11 +64,22 @@ class AuditorSelfReviewScreen extends StatelessWidget {
         slivers: [
           // ── App Bar ──
           SliverAppBar(
-            expandedHeight: 160,
+            expandedHeight: 140, // Slightly reduced
             pinned: true,
             backgroundColor: const Color(0xFF00897B),
             foregroundColor: Colors.white,
+            elevation: 0,
             flexibleSpace: FlexibleSpaceBar(
+              centerTitle: false, // Ensure title doesn't crash with back button
+              titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
+              title: const Text(
+                'Review & Submit',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Outfit',
+                ),
+              ),
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -72,30 +90,31 @@ class AuditorSelfReviewScreen extends StatelessWidget {
                 ),
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(56, 16, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(56, 16, 16, 50), // Increased bottom padding to avoid title overlap
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           siteName,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 16, // Slightly smaller
+                            fontWeight: FontWeight.w500,
+                            fontFamily: 'Outfit',
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
                         Text(
                           turbineName,
-                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          style: const TextStyle(color: Colors.white60, fontSize: 13, fontFamily: 'Outfit'),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-              title: const Text('Pre-Submission Review'),
             ),
           ),
 
@@ -127,15 +146,38 @@ class AuditorSelfReviewScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
+                    // Stats Grid (Stable 3 rows to prevent overlap)
+                    Column(
                       children: [
-                        _buildSummaryPill('Total', totalTasks, const Color(0xFF1565C0)),
-                        const SizedBox(width: 8),
-                        _buildSummaryPill('OK', okCount, const Color(0xFF388E3C)),
-                        const SizedBox(width: 8),
-                        _buildSummaryPill('Not OK', notOkCount, const Color(0xFFD32F2F)),
-                        const SizedBox(width: 8),
-                        _buildSummaryPill('NA', naCount, Colors.grey.shade600),
+                        Row(
+                          children: [
+                            _buildSummaryPill('TOTAL TASKS', totalTasks, const Color(0xFF1E40AF)), // Deeper blue
+                            const SizedBox(width: 12),
+                            _buildSummaryPill('OK STATUS', okCount, const Color(0xFF065F46)), // Forest green
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            _buildSummaryPill('NOT CONFORM', notOkCount, const Color(0xFF991B1B)), // Deep crimson
+                            const SizedBox(width: 12),
+                            _buildSummaryPill('OSC (FIXED)', correctedCount, Colors.teal), 
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            if (pendingCount > 0)
+                              _buildSummaryPill('PENDING', pendingCount, Colors.orange.shade800)
+                            else
+                              _buildSummaryPill('NOT APPLIC.', naCount, Colors.blueGrey.shade700),
+                            const SizedBox(width: 12),
+                            if (pendingCount > 0)
+                               _buildSummaryPill('NOT APPLIC.', naCount, Colors.blueGrey.shade700)
+                            else
+                               const Spacer(),
+                          ],
+                        ),
                       ],
                     ),
                     if (correctedCount > 0) ...[
@@ -296,20 +338,27 @@ class AuditorSelfReviewScreen extends StatelessWidget {
             width: double.infinity,
             height: 56,
             child: ElevatedButton.icon(
-              onPressed: () {
-                // Pop this screen first, then trigger submit in parent
-                Navigator.of(context).pop();
-                onConfirmSubmit();
-              },
-              icon: const Icon(Icons.check_circle_outline, size: 22),
-              label: const Text(
-                'Confirm & Submit',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              onPressed: pendingCount > 0 
+                ? null 
+                : () {
+                    // Pop this screen first, then trigger submit in parent
+                    Navigator.of(context).pop();
+                    onConfirmSubmit();
+                  },
+              icon: Icon(
+                pendingCount > 0 ? Icons.lock_outline_rounded : Icons.check_circle_outline, 
+                size: 22
+              ),
+              label: Text(
+                pendingCount > 0 
+                  ? 'PENDING TASKS: $pendingCount (Complete All)' 
+                  : 'Confirm & Submit Audit',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00897B),
+                backgroundColor: pendingCount > 0 ? Colors.grey.shade300 : const Color(0xFF00897B),
                 foregroundColor: Colors.white,
-                elevation: 4,
+                elevation: pendingCount > 0 ? 0 : 4,
                 shadowColor: const Color(0xFF00897B).withValues(alpha: 0.4),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
@@ -323,29 +372,50 @@ class AuditorSelfReviewScreen extends StatelessWidget {
   Widget _buildSummaryPill(String label, int count, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.1), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: Column(
+        child: Row(
           children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: color,
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: color,
+                  fontFamily: 'Outfit',
+                ),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: color.withValues(alpha: 0.8),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: color.withValues(alpha: 0.8),
+                  fontFamily: 'Outfit',
+                  letterSpacing: 0.5,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -363,17 +433,18 @@ class AuditorSelfReviewScreen extends StatelessWidget {
     final subCategoryName = taskData['sub_category_name']?.toString() ?? '';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(16), // Increased from 8
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.05)),
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -466,23 +537,27 @@ class AuditorSelfReviewScreen extends StatelessWidget {
                     ),
                   if (isCorrected) ...[
                     const SizedBox(height: 4),
+                  if (isCorrected) ...[
+                    const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.green.shade200, width: 0.5),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.check, size: 10, color: Colors.green.shade700),
-                          const SizedBox(width: 2),
+                          Icon(Icons.auto_awesome, size: 10, color: Colors.green.shade700), // OSC icon
+                          const SizedBox(width: 4),
                           Text(
-                            'Fixed',
+                            'OSC - RESOLVED',
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                               color: Colors.green.shade700,
+                              fontFamily: 'Outfit',
                             ),
                           ),
                         ],

@@ -928,8 +928,32 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
 
   /// Navigate to Self-Review screen before submission
   Future<void> _navigateToSelfReview() async {
+    // Show validation loader
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Calculating completeness...', style: TextStyle(fontFamily: 'Outfit')),
+          ],
+        ),
+      ),
+    );
+
+    // Calculate pending and total tasks
+    final pendingTasks = await _scanForPendingTasks();
     await AuditManager.instance.flush();
     final allAnswers = AuditManager.instance.getAllAnswers();
+    
+    final pendingCount = pendingTasks.length;
+    final totalTasks = allAnswers.length + pendingCount;
+
+    if (!mounted) return;
+    Navigator.pop(context); // Close loader
+
     final typedAnswers = <String, Map<String, dynamic>>{};
     allAnswers.forEach((key, value) {
       if (value is Map) {
@@ -945,6 +969,8 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           auditData: typedAnswers,
           siteName: widget.siteName,
           turbineName: widget.turbineName,
+          totalTasks: totalTasks,
+          pendingCount: pendingCount,
           onConfirmSubmit: _submitFinalAudit,
         ),
       ),

@@ -15,7 +15,13 @@ class AuditDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = auditData.entries.toList();
+    final allTasks = auditData.entries.toList();
+    // Filter for only NCs (Not OK items)
+    final ncTasks = allTasks.where((entry) {
+      final data = entry.value as Map<String, dynamic>;
+      return data['status'] == 'Not OK';
+    }).toList();
+
     final dateStr = timestamp != null
         ? DateFormat('dd MMM yyyy, hh:mm a').format(timestamp!.toDate())
         : 'Unknown Date';
@@ -49,16 +55,50 @@ class AuditDetailsScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: tasks.isEmpty
-          ? const Center(child: Text('No tasks found in this audit.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: tasks.length,
-              itemBuilder: (context, index) {
-
-                final taskData = tasks[index].value as Map<String, dynamic>;
-                return _buildTaskCard(context, taskData);
-              },
+      body: ncTasks.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 64, color: Colors.green.shade400),
+                  const SizedBox(height: 16),
+                  const Text('No Non-Conformances', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('This turbine is 100% compliant.', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                // Summary bar
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  color: Colors.red.shade50,
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 20),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Found ${ncTasks.length} Non-Conformances',
+                        style: TextStyle(
+                          color: Colors.red.shade900,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16.0),
+                    itemCount: ncTasks.length,
+                    itemBuilder: (context, index) {
+                      final taskData = ncTasks[index].value as Map<String, dynamic>;
+                      return _buildTaskCard(context, taskData);
+                    },
+                  ),
+                ),
+              ],
             ),
     );
   }

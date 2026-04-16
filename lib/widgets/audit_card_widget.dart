@@ -95,7 +95,7 @@ class AuditCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(_icon, color: color, size: 34), // Scaled up icon
+                      Icon(_icon, color: color, size: 24), // Reduced from 34
                        _buildIndicatorTag(pending == 0 ? 'COMPLETE' : '${(progress * 100).toInt()}%', color),
                     ],
                   ),
@@ -105,11 +105,11 @@ class AuditCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 19, // Scaled up (+35%)
-                      fontWeight: FontWeight.w900,
+                      fontSize: 15, // Reduced from 19
+                      fontWeight: FontWeight.bold, // Switched from w900 for sharper look
                       color: Color(0xFF1A1F36),
                       height: 1.1,
-                      letterSpacing: -0.5,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -128,12 +128,12 @@ class AuditCard extends StatelessWidget {
                   
                   // Progress Bar
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(3),
                     child: LinearProgressIndicator(
                       value: progress,
                       backgroundColor: color.withValues(alpha: 0.15),
                       valueColor: AlwaysStoppedAnimation<Color>(color),
-                      minHeight: 10, // Thicker bar
+                      minHeight: 6, // Slimmer bar
                     ),
                   ),
                 ],
@@ -147,26 +147,26 @@ class AuditCard extends StatelessWidget {
 
   Widget _buildIndicatorTag(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), // Reduced padding
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color), // Reduced font size
       ),
     );
   }
 
   Widget _buildPillStat(String label, int count, Color statColor) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), // Reduced from 8
       decoration: BoxDecoration(
-        color: statColor.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: statColor.withValues(alpha: 0.4), width: 1.5),
+        color: statColor.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statColor.withValues(alpha: 0.3), width: 1.0), // Thinner border
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -174,18 +174,18 @@ class AuditCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 11, 
-              fontWeight: FontWeight.w900, 
+              fontSize: 9, // Reduced from 11
+              fontWeight: FontWeight.bold, // Switched from w900
               color: statColor.withValues(alpha: 0.8),
-              letterSpacing: -0.5,
+              letterSpacing: -0.2,
             ),
           ),
           const SizedBox(width: 4),
           Text(
             '$count',
             style: TextStyle(
-              fontSize: 15, 
-              fontWeight: FontWeight.w900, 
+              fontSize: 12, // Reduced from 15
+              fontWeight: FontWeight.bold, // Switched from w900
               color: statColor,
             ),
           ),

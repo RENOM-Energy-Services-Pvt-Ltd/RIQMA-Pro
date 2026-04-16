@@ -70,7 +70,8 @@ class SyncService extends ChangeNotifier {
       final modelIds = <String>{};
       for (var doc in planDocs) {
         final data = doc.data() as Map<String, dynamic>;
-        final modelRef = data['turbine_model_ref'] as DocumentReference?;
+        // Fix: In planning_data, it's 'turbinemodel_ref'
+        final modelRef = (data['turbinemodel_ref'] ?? data['turbine_model_ref']) as DocumentReference?;
         if (modelRef != null) {
           modelIds.add(modelRef.id);
         }
@@ -80,7 +81,7 @@ class SyncService extends ChangeNotifier {
         _isSyncing = false;
         _isReady = true;
         _progress = 1.0;
-        _statusMessage = 'Offline Ready (No plans found)';
+        _statusMessage = 'Offline Ready (${planDocs.length} plans found)';
         notifyListeners();
         return;
       }
@@ -129,7 +130,7 @@ class SyncService extends ChangeNotifier {
       _isSyncing = false;
       _isReady = true;
       _progress = 1.0;
-      _statusMessage = 'Offline Ready';
+      _statusMessage = 'Offline Ready (${planDocs.length} plans found)';
       notifyListeners();
 
     } catch (e) {

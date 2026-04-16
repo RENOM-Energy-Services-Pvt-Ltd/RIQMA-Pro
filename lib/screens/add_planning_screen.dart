@@ -44,26 +44,42 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
           
-          // Fetch Assigned State
-          if (data.containsKey('assigned_state') && data['assigned_state'] != null) {
-            final assignedStateName = data['assigned_state'] as String;
-            
-            // Find the state ID for this name
-            final stateQuery = await FirebaseFirestore.instance
-                .collection('states')
-                .where('state', isEqualTo: assignedStateName)
-                .limit(1)
-                .get();
+          final assignedStateName = data['assigned_state']?.toString();
+          String? assignedStateId = data['assigned_state_id']?.toString();
+          final String role = data['role']?.toString() ?? 'auditor'; // Default to auditor for safety
+          final bool isAuditor = (role == 'auditor');
 
-            if (stateQuery.docs.isNotEmpty) {
-              final stateDoc = stateQuery.docs.first;
-              if (mounted) {
-                setState(() {
-                  _selectedStateId = stateDoc.id;
-                  _selectedStateName = assignedStateName;
-                  _isStateLocked = true;
-                });
+          if (!isAuditor) {
+            // Managers/Admins are not locked
+            setState(() => _isStateLocked = false);
+            return;
+          }
+
+          if (assignedStateName != null && assignedStateName.isNotEmpty) {
+            // If ID is missing, attempt to recover it by name
+            if (assignedStateId == null || assignedStateId.isEmpty) {
+              final stateQuery = await FirebaseFirestore.instance
+                  .collection('states')
+                  .where('state', isEqualTo: assignedStateName)
+                  .limit(1)
+                  .get();
+
+              if (stateQuery.docs.isNotEmpty) {
+                assignedStateId = stateQuery.docs.first.id;
               }
+            }
+
+            if (mounted && assignedStateId != null) {
+              setState(() {
+                _selectedStateId = assignedStateId;
+                _selectedStateName = assignedStateName;
+                _isStateLocked = true;
+              });
+            } else if (mounted) {
+               // If we found a name but still no ID, we can't lock properly because site lookup will fail
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text('Warning: Assigned state ID not found. Sites may not load.')),
+               );
             }
           }
         }
@@ -387,11 +403,12 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
         // Filter models based on selected site (supporting both new and legacy schema)
         final filteredModels = allModels.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          
-          // Check new schema: site_ids array
+          final siteRef = FirebaseFirestore.instance.collection('sites').doc(_selectedSiteId);
+
+          // Check new schema: site_ids array (can contain String IDs or DocumentReferences)
           if (data.containsKey('site_ids') && data['site_ids'] is List) {
             final siteIds = data['site_ids'] as List<dynamic>;
-            if (siteIds.contains(_selectedSiteId)) {
+            if (siteIds.contains(_selectedSiteId) || siteIds.contains(siteRef)) {
               return true;
             }
           }
@@ -399,7 +416,7 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
           // Check legacy schema: site_ref
           if (data.containsKey('site_ref') && data['site_ref'] is DocumentReference) {
             final ref = data['site_ref'] as DocumentReference<Object?>;
-            if (ref.id == _selectedSiteId) {
+            if (ref.id == _selectedSiteId || ref == siteRef) {
               return true;
             }
           }
