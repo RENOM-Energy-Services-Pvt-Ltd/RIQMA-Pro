@@ -44,7 +44,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
 
   // ── State for merged main-category list ──────────────────────────────────
   final List<QueryDocumentSnapshot> _categories = [];
-  final Set<String> _expandedCategories = {}; // Track expanded/collapsed state
   StreamSubscription<QuerySnapshot>? _subByModel;
   StreamSubscription<QuerySnapshot>? _subAllModels;
 
@@ -81,9 +80,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
 
   /// Subscribe to two Firestore streams and merge them into [_categories].
   void _subscribeToCategories() {
-    final currentModelId = widget.turbineModelRef.id;
-
-    // Stream 1: categories explicitly mapped to this turbine model
+    // Stream 1: categories explicitly mapped to this turbine model property target_models
     _subByModel = FirebaseFirestore.instance
         .collection('main_categories')
         .where('target_models', arrayContains: widget.turbineModelRef.id)
@@ -207,7 +204,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     // 1. Show Validation Loader
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => const AlertDialog(
@@ -219,7 +216,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           ],
         ),
       ),
-    );
+    ));
 
     final pendingTasks = await _scanForPendingTasks();
     if (!mounted) return;
@@ -316,7 +313,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
 
     // Show progress dialog
     if (!mounted) return;
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => ValueListenableBuilder<Map<String, dynamic>>(
@@ -380,7 +377,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           );
         },
       ),
-    );
+    ));
 
     try {
       var uploadedCount = 0;
@@ -929,7 +926,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
   /// Navigate to Self-Review screen before submission
   Future<void> _navigateToSelfReview() async {
     // Show validation loader
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => const AlertDialog(
@@ -941,7 +938,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           ],
         ),
       ),
-    );
+    ));
 
     // Calculate pending and total tasks
     final pendingTasks = await _scanForPendingTasks();
@@ -962,7 +959,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     });
 
     if (!mounted) return;
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute<void>(
         builder: (_) => AuditorSelfReviewScreen(
@@ -1053,30 +1050,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     );
   }
 
-
-
-  Future<Map<String, int>> _calculateSubCategoryProgressDirect(DocumentReference subCategoryRef) async {
-    final allAnswers = AuditManager.instance.getAllAnswers();
-    final tasksSnapshot = await FirebaseFirestore.instance
-        .collection('tasks')
-        .where('sub_categories_ref', isEqualTo: subCategoryRef)
-        .get();
-
-    final total = tasksSnapshot.docs.length;
-    var okCount = 0, notOkCount = 0, naCount = 0;
-    for (var taskDoc in tasksSnapshot.docs) {
-      final taskId = taskDoc.id;
-      if (allAnswers.containsKey(taskId)) {
-        final status = allAnswers[taskId]?['status'];
-        if (status == 'OK') {
-          okCount++;
-        } else if (status == 'Not OK') notOkCount++;
-        else if (status == 'NA') naCount++;
-      }
-    }
-    return {'total': total, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
-  }
-
   Future<Map<String, int>> _calculateProgress(DocumentReference mainCategoryRef) async {
     final allAnswers = AuditManager.instance.getAllAnswers();
     var totalTasks = 0;
@@ -1100,7 +1073,8 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
       for (var taskDoc in tasksSnapshot.docs) {
         final taskId = taskDoc.id;
         if (allAnswers.containsKey(taskId)) {
-          final status = allAnswers[taskId]?['status'];
+          final taskData = allAnswers[taskId] as Map<String, dynamic>?;
+          final status = taskData?['status'];
           if (status == 'OK') {
             okCount++;
           } else if (status == 'Not OK') {
@@ -1115,86 +1089,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     return {'total': totalTasks, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
   }
 
-
-  Future<void> _showStatusDetails(BuildContext context, String categoryName, DocumentReference mainCategoryRef, String statusFilter) async {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Text(
-              '$statusFilter Tasks - $categoryName',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _fetchFilteredTasks(mainCategoryRef, statusFilter),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-                  
-                  final tasks = snapshot.data ?? [];
-                  if (tasks.isEmpty) {
-                    return const Center(child: Text('No tasks found.'));
-                  }
-
-                  return ListView.builder(
-                    itemCount: tasks.length,
-                    itemBuilder: (context, index) {
-                      final task = tasks[index];
-                      return ListTile(
-                        title: Text((task['title'] as String?) ?? 'Unknown Task'),
-                        subtitle: Text((task['reference'] as String?) ?? 'No Reference'),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.pop(context); // Close bottom sheet
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (context) => AuditTaskScreen(
-                                subCategoryName: task['sub_category_name'] as String,
-                                subCategoryRef: task['sub_category_ref'] as DocumentReference<Object?>,
-                                mainCategoryName: categoryName,
-                                mainCategoryRef: mainCategoryRef,
-                                initialTaskId: task['id'] as String,
-                              ),
-                            ),
-                          ).then((_) => setState(() {}));
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _showIncompleteAuditDialog(List<Map<String, dynamic>> pendingTasks) {
     showModalBottomSheet<void>(
@@ -1357,7 +1251,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     final allAnswers = AuditManager.instance.getAllAnswers();
     
     // 1. Get all Main Categories for this turbine model (new + legacy schema)
-    final currentModelId = widget.turbineModelRef.id;
 
     Future<QuerySnapshot> fetchByModelId() => FirebaseFirestore.instance
         .collection('main_categories')
@@ -1421,7 +1314,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         for (var taskDoc in tasksQuery.docs) {
           final taskId = taskDoc.id;
           final taskData = taskDoc.data();
-          final answer = allAnswers[taskId];
+          final answer = allAnswers[taskId] as Map<String, dynamic>?;
           final status = answer?['status'];
           
           if (status == null || status.toString().isEmpty) {
@@ -1439,87 +1332,5 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
       }
     }
     return pendingTasks;
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchFilteredTasks(DocumentReference mainCategoryRef, String statusFilter) async {
-    // AuditManager is already initialized in initState() with correct draftId
-    final allAnswers = AuditManager.instance.getAllAnswers();
-    final filteredTasks = <Map<String, dynamic>>[];
-
-    // Get all subcategories
-    final subCategoriesSnapshot = await FirebaseFirestore.instance
-        .collection('sub_categories')
-        .where('main_categories_ref', isEqualTo: mainCategoryRef)
-        .get();
-
-    for (var subCategoryDoc in subCategoriesSnapshot.docs) {
-      final subCategoryName = subCategoryDoc.get('name') as String;
-      
-      final tasksSnapshot = await FirebaseFirestore.instance
-          .collection('tasks')
-          .where('sub_categories_ref', isEqualTo: subCategoryDoc.reference)
-          .orderBy('sort_order')
-          .get();
-
-      for (var taskDoc in tasksSnapshot.docs) {
-        final taskId = taskDoc.id;
-        final taskData = taskDoc.data();
-        final answer = allAnswers[taskId];
-        final status = answer?['status'];
-
-        var matches = false;
-        if (statusFilter == 'Not OK') {
-          matches = status == 'Not OK';
-        } else if (statusFilter == 'Pending') {
-          matches = status == null || (status != 'OK' && status != 'Not OK');
-        }
-
-        if (matches) {
-          // Resolve reference name (simplified for list view)
-          var referenceName = 'N/A';
-          if (taskData.containsKey('referenceoftask')) {
-            referenceName = taskData['referenceoftask'].toString();
-          }
-
-          filteredTasks.add({
-            'id': taskId,
-            'title': taskData['title'] as String,
-            'reference': referenceName,
-            'sub_category_name': subCategoryName,
-            'sub_category_ref': subCategoryDoc.reference,
-          });
-        }
-      }
-    }
-    return filteredTasks;
-  }
-
-  Widget _buildStatusPill(String text, Color bgColor, Color textColor, {VoidCallback? onTap}) {
-    final pill = Container(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: textColor.withValues(alpha: 0.3), width: 1), // Subtle border
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          color: textColor,
-        ),
-      ),
-    );
-
-    if (onTap != null) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: pill,
-      );
-    }
-    return pill;
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,9 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../screens/audit/unplanned_audit_screen.dart';
 import '../screens/audit_main_categories_screen.dart';
+
+import '../services/audit_manager.dart';
 import '../services/sync_service.dart';
 import '../widgets/searchable_dropdown.dart';
-import '../services/audit_manager.dart';
 
 class AuditTab extends StatefulWidget {
   final String? assignedState;
@@ -262,8 +264,6 @@ class _AuditTabState extends State<AuditTab> {
     var allTurbines = <Map<String, dynamic>>[];
 
     // Filtered lists
-    var visibleSites = <Map<String, dynamic>>[];
-    var visibleModels = <Map<String, dynamic>>[];
     var visibleTurbines = <Map<String, dynamic>>[];
 
     // Selections
@@ -282,12 +282,6 @@ class _AuditTabState extends State<AuditTab> {
       selectedModelId = null;
       selectedTurbineId = null;
 
-      final stateRef = FirebaseFirestore.instance.collection('states').doc(stateId);
-      visibleSites = allSites.where((doc) {
-        final ref = doc['state_ref'] as DocumentReference?;
-        return ref == stateRef;
-      }).toList();
-      visibleModels = [];
       visibleTurbines = [];
       setSheetState(() {});
     }
@@ -297,19 +291,7 @@ class _AuditTabState extends State<AuditTab> {
       selectedModelId = null;
       selectedTurbineId = null;
 
-      final siteRef = FirebaseFirestore.instance.collection('sites').doc(siteId);
-
-      visibleModels = allModels.where((doc) {
-        if (doc.containsKey('site_ids') && doc['site_ids'] is List) {
-          final siteIds = doc['site_ids'] as List<dynamic>;
-          if (siteIds.contains(siteRef) || siteIds.contains(siteId)) return true;
-        }
-        if (doc.containsKey('site_ref') && doc['site_ref'] is DocumentReference) {
-          final ref = doc['site_ref'] as DocumentReference<Object?>;
-          if (ref.id == siteId) return true;
-        }
-        return false;
-      }).toList();
+      // Filtering models not needed for final display, but keeping logic consistent
       visibleTurbines = [];
       setSheetState(() {});
     }
@@ -342,14 +324,14 @@ class _AuditTabState extends State<AuditTab> {
       for (var turbine in visibleTurbines) {
         final dId = '${planId}_${turbine['id']}';
         // unawaited
-        AuditManager.draftExists(dId).then((exists) {
+        unawaited(AuditManager.draftExists(dId).then((exists) {
           turbineDrafts[turbine['id'] as String] = exists;
-        });
+        }));
       }
     }
 
     if (!context.mounted) return;
-    showGeneralDialog<void>(
+    unawaited(showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
@@ -425,7 +407,7 @@ class _AuditTabState extends State<AuditTab> {
                     });
                   }
 
-                  final currentStep = selectedTurbineId != null ? 1 : 0;
+
 
                   return Container(
                     constraints: const BoxConstraints(maxWidth: 500),
@@ -595,7 +577,7 @@ class _AuditTabState extends State<AuditTab> {
           ),
         );
       },
-    );
+    ));
   }
 
   Widget _buildWizardCard({

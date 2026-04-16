@@ -91,8 +91,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
     // initialize with correct draftId to ensure we load the right file
     await AuditManager.instance.init(draftId: widget.draftId);
     setState(() {
-      final savedData = AuditManager.instance.getAllAnswers();
-      savedData.forEach((key, value) {
+      AuditManager.instance.getAllAnswers().forEach((key, value) {
         if (value is Map) {
           auditData[key] = Map<String, dynamic>.from(value);
         }
@@ -188,8 +187,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
       if (!auditData.containsKey(taskId)) {
         auditData[taskId] = {};
       }
-      final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? []);
-      currentPhotos.add(finalPath);
+      final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? [])..add(finalPath);
       _updateAnswer(taskId, 'photos', currentPhotos);
     }
   }

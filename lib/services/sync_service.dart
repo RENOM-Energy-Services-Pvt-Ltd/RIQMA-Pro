@@ -14,7 +14,7 @@ class SyncService extends ChangeNotifier {
   bool _isReady = false;
   double _progress = 0;
   String? _statusMessage;
-  StreamSubscription? _plansSubscription;
+  StreamSubscription<QuerySnapshot>? _plansSubscription;
 
   bool get isSyncing => _isSyncing;
   bool get isReady => _isReady;

@@ -259,7 +259,7 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
         ),
       ),
     );
-    _checkDraft(); // Re-check draft when returning
+    await _checkDraft(); // Re-check draft when returning
   }
 
   /// Helper to get current step (0-indexed)
@@ -483,7 +483,7 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
                                   content: Text('Error: Referenced data not found. Discarding draft.'),
                                 ),
                               );
-                              _discardDraft();
+                              await _discardDraft();
                               return;
                             }
 
@@ -502,7 +502,7 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
                                 ),
                               ),
                             );
-                            _checkDraft();
+                            await _checkDraft();
                           },
                           icon: const Icon(Icons.play_arrow),
                           label: const Text('Resume'),

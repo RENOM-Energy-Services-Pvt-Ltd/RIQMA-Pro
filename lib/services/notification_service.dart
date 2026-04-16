@@ -123,7 +123,10 @@ class NotificationService {
     }
   }
 
-  /// Save FCM token to user's Firestore document
+  /// Save FCM token to user's Firestore document.
+  /// Uses set+merge so it works even when fcmToken field is absent (new users,
+  /// reinstalled apps). Previously used .update() which threw an exception in
+  /// that case, silently preventing tokens from ever being saved.
   Future<void> _saveTokenToFirestore(String token) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -131,7 +134,7 @@ class NotificationService {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .update({'fcmToken': token});
+            .set({'fcmToken': token}, SetOptions(merge: true));
         debugPrint('NotificationService: Token saved to Firestore');
       }
     } catch (e) {

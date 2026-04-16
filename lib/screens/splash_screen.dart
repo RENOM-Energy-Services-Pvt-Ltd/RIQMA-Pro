@@ -33,7 +33,22 @@ class _WindFarmSplashState extends State<WindFarmSplash> with TickerProviderStat
     _dropController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
-    );
+    )
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          // Drop finished. 
+          // Spin continues (no reset).
+
+          // Phase 3: Birds overlap 0.5s after spin starts
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) _birdFlyController.forward();
+          });
+
+          // Phase 4: Transmission lines fade in
+          _linesFadeController.forward();
+        }
+      })
+      ..forward();
 
     // 2. The Spin (Infinite)
     _spinController = AnimationController(
@@ -53,28 +68,6 @@ class _WindFarmSplashState extends State<WindFarmSplash> with TickerProviderStat
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-
-
-
-    // Choreography
-    _dropController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        // Drop finished. 
-        // Spin continues (no reset).
-
-        // Phase 3: Birds overlap 0.5s after spin starts
-        // Phase 3: Birds overlap 0.5s after spin starts
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) _birdFlyController.forward();
-        });
-
-        // Phase 4: Transmission lines fade in
-        _linesFadeController.forward();
-      }
-    });
-
-    // Start the Sequence
-    _dropController.forward();
 
     // Startup Logic: Wait for BOTH min duration AND initialization
     _handleStartup();
@@ -495,17 +488,15 @@ class BackgroundHillPainter extends CustomPainter {
       ..color = const Color(0xFF33691E)
       ..style = PaintingStyle.fill;
 
-    final path = Path();
-    // Wide curve peaking on right
-    // Start low-ish on left, peak right
-    path.moveTo(0, size.height * 0.75);
-    path.quadraticBezierTo(
-      size.width * 0.7, size.height * 0.6, // Control point high right
-      size.width, size.height * 0.7, // End point
-    );
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
+    final path = Path()
+      ..moveTo(0, size.height * 0.75)
+      ..quadraticBezierTo(
+        size.width * 0.7, size.height * 0.6, // Control point high right
+        size.width, size.height * 0.7, // End point
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
 
     canvas.drawPath(path, paint);
   }
@@ -525,25 +516,21 @@ class ForegroundHillPainter extends CustomPainter {
         stops: [0.0, 0.9, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
-    final path = Path();
-    // Complex wave rising in middle
-    path.moveTo(0, size.height);
-    path.lineTo(0, size.height * 0.85);
-    
-    // Wave 1
-    path.quadraticBezierTo(
-      size.width * 0.25, size.height * 0.9, 
-      size.width * 0.5, size.height * 0.75, // Peak
-    );
-    
-    // Wave 2
-    path.quadraticBezierTo(
-      size.width * 0.75, size.height * 0.65, 
-      size.width, size.height * 0.9,
-    );
-    
-    path.lineTo(size.width, size.height);
-    path.close();
+    final path = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(0, size.height * 0.85)
+      // Wave 1
+      ..quadraticBezierTo(
+        size.width * 0.25, size.height * 0.9,
+        size.width * 0.5, size.height * 0.75, // Peak
+      )
+      // Wave 2
+      ..quadraticBezierTo(
+        size.width * 0.75, size.height * 0.65,
+        size.width, size.height * 0.9,
+      )
+      ..lineTo(size.width, size.height)
+      ..close();
 
     canvas.drawPath(path, paint);
   }
@@ -561,15 +548,14 @@ class TurbineTowerPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
     // Tapered rectangle
-    final path = Path();
     final w = size.width;
     final h = size.height;
-    
-    path.moveTo(w * 0.3, 0); // Top left (narrow)
-    path.lineTo(w * 0.7, 0); // Top right
-    path.lineTo(w, h);       // Bottom right (wide)
-    path.lineTo(0, h);       // Bottom left
-    path.close();
+    final path = Path()
+      ..moveTo(w * 0.3, 0) // Top left (narrow)
+      ..lineTo(w * 0.7, 0) // Top right
+      ..lineTo(w, h) // Bottom right (wide)
+      ..lineTo(0, h) // Bottom left
+      ..close();
 
     canvas.drawPath(path, paint);
   }
@@ -613,11 +599,11 @@ class TurbineBladesPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // Convert SVG path commands to Dart Path
-    final path = Path();
-    path.moveTo(-5, -17);
-    path.quadraticBezierTo(-24, -90, 0, -155);
-    path.quadraticBezierTo(24, -90, 5, -17);
-    path.close();
+    final path = Path()
+      ..moveTo(-5, -17)
+      ..quadraticBezierTo(-24, -90, 0, -155)
+      ..quadraticBezierTo(24, -90, 5, -17)
+      ..close();
 
     // Draw White Blade
     canvas.drawPath(path, paint);
@@ -675,19 +661,19 @@ class BirdPainter extends CustomPainter {
     // "Bird Body: M0,0 Q15,-5 30,0 Q15,8 0,0 Z"
     // Does not look like it includes beak.
     // I'll draw a small beak triangle at the head (30,0).
-    final beakPath = Path();
-    beakPath.moveTo(28, -2);
-    beakPath.lineTo(35, 0);
-    beakPath.lineTo(28, 2);
-    beakPath.close();
+    final beakPath = Path()
+      ..moveTo(28, -2)
+      ..lineTo(35, 0)
+      ..lineTo(28, 2)
+      ..close();
     canvas.drawPath(beakPath, beakPaint);
 
     // Body
-    final bodyPath = Path();
-    bodyPath.moveTo(0, 0);
-    bodyPath.quadraticBezierTo(15, -5, 30, 0);
-    bodyPath.quadraticBezierTo(15, 8, 0, 0);
-    bodyPath.close();
+    final bodyPath = Path()
+      ..moveTo(0, 0)
+      ..quadraticBezierTo(15, -5, 30, 0)
+      ..quadraticBezierTo(15, 8, 0, 0)
+      ..close();
     canvas.drawPath(bodyPath, bodyPaint);
 
     // Wing
@@ -699,11 +685,11 @@ class BirdPainter extends CustomPainter {
     canvas.scale(1.0, wingScale);
     canvas.translate(-18, 2);
 
-    final wingPath = Path();
-    wingPath.moveTo(8, -2);
-    wingPath.quadraticBezierTo(18, -18, 28, -2);
-    wingPath.quadraticBezierTo(18, -6, 8, -2);
-    wingPath.close();
+    final wingPath = Path()
+      ..moveTo(8, -2)
+      ..quadraticBezierTo(18, -18, 28, -2)
+      ..quadraticBezierTo(18, -6, 8, -2)
+      ..close();
     canvas.drawPath(wingPath, wingPaint);
     
     canvas.restore();
@@ -722,8 +708,6 @@ class TransmissionLinesPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
 
-    final path = Path();
-    
     // Coordinates must match the Positioned widgets in the Stack
     // Design Size: 500 x 900
     // Left Turbine: left 40, width 128 (160*0.8), bottom 240
@@ -741,29 +725,24 @@ class TransmissionLinesPainter extends CustomPainter {
     const rightX = 396.0;
     const rightY = 660.0;
 
-    // Draw Switch Yards (Transformers) FIRST so lines go "into" them or behind?
-    // Let's draw lines first, then switch yards on top.
-    
-    // Line Left -> Center
-    path.moveTo(leftX, leftY);
-    path.quadraticBezierTo(
-      (leftX + centerX) / 2, leftY + 60, // Deeper dip
-      centerX, centerY,
-    );
-
-    // Line Center -> Right
-    path.moveTo(centerX, centerY);
-    path.quadraticBezierTo(
-      (centerX + rightX) / 2, rightY + 60, // Deeper dip
-      rightX, rightY,
-    );
-    
-    // Offscreen connections
-    path.moveTo(leftX, leftY);
-    path.lineTo(0, leftY + 20);
-
-    path.moveTo(rightX, rightY);
-    path.lineTo(size.width, rightY + 20);
+    final path = Path()
+      // Line Left -> Center
+      ..moveTo(leftX, leftY)
+      ..quadraticBezierTo(
+        (leftX + centerX) / 2, leftY + 60, // Deeper dip
+        centerX, centerY,
+      )
+      // Line Center -> Right
+      ..moveTo(centerX, centerY)
+      ..quadraticBezierTo(
+        (centerX + rightX) / 2, rightY + 60, // Deeper dip
+        rightX, rightY,
+      )
+      // Offscreen connections
+      ..moveTo(leftX, leftY)
+      ..lineTo(0, leftY + 20)
+      ..moveTo(rightX, rightY)
+      ..lineTo(size.width, rightY + 20);
 
     canvas.drawPath(path, paint);
 

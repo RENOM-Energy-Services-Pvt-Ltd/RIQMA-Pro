@@ -45,9 +45,9 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
           final data = userDoc.data() as Map<String, dynamic>;
           
           final assignedStateName = data['assigned_state']?.toString();
-          String? assignedStateId = data['assigned_state_id']?.toString();
-          final String role = data['role']?.toString() ?? 'auditor'; // Default to auditor for safety
-          final bool isAuditor = (role == 'auditor');
+          var assignedStateId = data['assigned_state_id']?.toString();
+          final role = data['role']?.toString() ?? 'auditor'; // Default to auditor for safety
+          final isAuditor = (role == 'auditor');
 
           if (!isAuditor) {
             // Managers/Admins are not locked

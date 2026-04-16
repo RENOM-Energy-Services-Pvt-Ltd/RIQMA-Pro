@@ -537,8 +537,6 @@ class AuditorSelfReviewScreen extends StatelessWidget {
                     ),
                   if (isCorrected) ...[
                     const SizedBox(height: 4),
-                  if (isCorrected) ...[
-                    const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(

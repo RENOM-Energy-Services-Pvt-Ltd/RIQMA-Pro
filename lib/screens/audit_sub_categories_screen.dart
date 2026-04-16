@@ -49,9 +49,7 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
   }
 
   void _subscribeToSubCategories() {
-    final currentModelId = widget.turbineModelRef.id;
-
-    // Stream 1: Sub-categories for this specific turbine model
+    // Stream 1: Sub-categories for this specific turbine model property target_models
     _subByModel = FirebaseFirestore.instance
         .collection('sub_categories')
         .where('main_categories_ref', isEqualTo: widget.mainCategoryRef)
@@ -281,7 +279,8 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
     for (var taskDoc in tasksSnapshot.docs) {
       final taskId = taskDoc.id;
       if (allAnswers.containsKey(taskId)) {
-        final status = allAnswers[taskId]?['status'];
+        final answerData = allAnswers[taskId] as Map<String, dynamic>?;
+        final status = answerData?['status'];
         if (status == 'OK') {
           okCount++;
         } else if (status == 'Not OK') {
@@ -293,118 +292,5 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
     }
 
     return {'total': total, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
-  }
-
-  Future<void> _showStatusDetails(BuildContext context, String categoryName, DocumentReference subCategoryRef, String statusFilter) async {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        height: MediaQuery.of(context).size.height * 0.6,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$statusFilter Tasks - $categoryName',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _fetchFilteredTasks(subCategoryRef, statusFilter),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-
-                  final tasks = snapshot.data ?? [];
-                  if (tasks.isEmpty) {
-                    return const Center(child: Text('No tasks found.'));
-                  }
-
-                  return ListView.builder(
-                    itemCount: tasks.length,
-                    itemBuilder: (context, index) {
-                      final task = tasks[index];
-                      return ListTile(
-                        title: Text((task['title'] as String?) ?? 'Unknown Task'),
-                        subtitle: Text((task['reference'] as String?) ?? 'No Reference'),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.pop(context); // Close bottom sheet
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (context) => AuditTaskScreen(
-                                subCategoryName: categoryName,
-                                subCategoryRef: subCategoryRef,
-                                mainCategoryName: widget.parentCategoryName,
-                                mainCategoryRef: widget.mainCategoryRef,
-                                initialTaskId: task['id'] as String,
-                                turbineId: widget.turbineId,
-                                draftId: widget.draftId, // Pass draftId
-                              ),
-                            ),
-                          ).then((_) => setState(() {}));
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchFilteredTasks(DocumentReference subCategoryRef, String statusFilter) async {
-    // Initialize with draftId to ensure correct storage context
-    if (widget.draftId != null) {
-      await AuditManager.instance.init(draftId: widget.draftId);
-    }
-    final allAnswers = AuditManager.instance.getAllAnswers();
-    final filteredTasks = <Map<String, dynamic>>[];
-
-    final tasksSnapshot = await FirebaseFirestore.instance
-        .collection('tasks')
-        .where('sub_categories_ref', isEqualTo: subCategoryRef)
-        .orderBy('sort_order')
-        .get();
-
-    for (var taskDoc in tasksSnapshot.docs) {
-      final taskId = taskDoc.id;
-      final taskData = taskDoc.data();
-      final answer = allAnswers[taskId];
-      final status = answer?['status'];
-
-      var matches = false;
-      if (statusFilter == 'Not OK') {
-        matches = status == 'Not OK';
-      } else if (statusFilter == 'Pending') {
-        matches = status == null || (status != 'OK' && status != 'Not OK');
-      }
-
-      if (matches) {
-        var referenceName = 'N/A';
-        if (taskData.containsKey('referenceoftask')) {
-          referenceName = taskData['referenceoftask'].toString();
-        }
-
-        filteredTasks.add({
-          'id': taskId,
-          'title': taskData['title'] as String?,
-          'reference': referenceName,
-        });
-      }
-    }
-    return filteredTasks;
   }
 }

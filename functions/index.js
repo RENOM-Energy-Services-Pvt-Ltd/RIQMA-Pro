@@ -47,8 +47,9 @@ function buildNotificationMessage(logData) {
   const { actionType, userName, metadata } = logData;
   const formattedTime = formatTime(logData.timestamp);
 
-  const turbineId = metadata?.turbineId || metadata?.turbineName || "Unknown Turbine";
-  const siteName = metadata?.siteName || "Unknown Site";
+  // Always prefer the human-readable name; fall back to ID only if name is absent
+  const turbineDisplayName = metadata?.turbineName || metadata?.turbineId || "Unknown Turbine";
+  const siteDisplayName = metadata?.siteName || metadata?.siteId || "Unknown Site";
 
   let title = "";
   let body = "";
@@ -56,17 +57,17 @@ function buildNotificationMessage(logData) {
   switch (actionType) {
     case "AUDIT_START":
       title = "🔍 Audit Started";
-      body = `${userName} has started audit for ${turbineId} (${siteName}) at ${formattedTime}`;
+      body = `${userName} has started audit for ${turbineDisplayName} (${siteDisplayName}) at ${formattedTime}`;
       break;
 
     case "AUDIT_SUBMIT":
       title = "✅ Audit Submitted";
-      body = `${userName} has submitted audit for ${turbineId} (${siteName}) at ${formattedTime}`;
+      body = `${userName} has submitted audit for ${turbineDisplayName} (${siteDisplayName}) at ${formattedTime}`;
       break;
 
     case "AUDIT_PLAN_ADD":
       title = "📋 New Plan Added";
-      body = `${userName} has added a new plan for ${siteName} at ${formattedTime}`;
+      body = `${userName} has added a new plan for ${siteDisplayName} at ${formattedTime}`;
       break;
 
     default:

@@ -115,7 +115,8 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
       final allAnswers = AuditManager.instance.getAllAnswers();
 
       for (var mainCatDoc in uniqueDocs) {
-        final mainCatName = (mainCatDoc.data()['name'] as String?) ?? 'Unknown';
+        final mainCatData = mainCatDoc.data();
+        final mainCatName = (mainCatData['name'] as String?) ?? 'Unknown';
 
         // 2. Get sub categories
         final subCatsSnapshot = await FirebaseFirestore.instance
@@ -124,7 +125,8 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
             .get();
 
         for (var subCatDoc in subCatsSnapshot.docs) {
-          final subCatName = (subCatDoc.data()['name'] as String?) ?? 'Unknown';
+          final subCatData = subCatDoc.data();
+          final subCatName = (subCatData['name'] as String?) ?? 'Unknown';
 
           // 3. Get tasks
           final tasksSnapshot = await FirebaseFirestore.instance
@@ -149,7 +151,8 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
 
             // Attach local observation if exists
             if (allAnswers.containsKey(taskId)) {
-              task.observation = allAnswers[taskId]['observation']?.toString() ?? '';
+              final answerData = allAnswers[taskId] as Map<String, dynamic>?;
+              task.observation = answerData?['observation']?.toString() ?? '';
             }
 
             tasks.add(task);
@@ -162,7 +165,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
           _allTasks = tasks;
           _isLoading = false;
         });
-        _animController.forward();
+        unawaited(_animController.forward());
       }
     } catch (e) {
       if (mounted) {
@@ -291,7 +294,8 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
   String _getTaskStatus(String taskId) {
     final allAnswers = AuditManager.instance.getAllAnswers();
     if (allAnswers.containsKey(taskId)) {
-      final status = allAnswers[taskId]?['status'];
+      final answerData = allAnswers[taskId] as Map<String, dynamic>?;
+      final status = answerData?['status'];
       if (status == 'OK') return 'OK';
       if (status == 'Not OK') return 'Not OK';
     }
@@ -300,7 +304,8 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
 
   bool _isTaskCorrected(String taskId) {
     final allAnswers = AuditManager.instance.getAllAnswers();
-    return allAnswers[taskId]?['is_corrected'] == true;
+    final answerData = allAnswers[taskId] as Map<String, dynamic>?;
+    return answerData?['is_corrected'] == true;
   }
 
   Color _getStatusColor(String status) {
