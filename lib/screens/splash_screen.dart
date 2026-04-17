@@ -571,14 +571,13 @@ class TurbineBladesPainter extends CustomPainter {
     
     // Draw 3 Blades
     for (var i = 0; i < 3; i++) {
-      canvas
-        ..save()
-        ..translate(center.dx, center.dy)
-        ..rotate(i * 120 * (math.pi / 180));
+      canvas.save(); // ignore: cascade_invocations
+      canvas.translate(center.dx, center.dy); // ignore: cascade_invocations
+      canvas.rotate(i * 120 * (math.pi / 180)); // ignore: cascade_invocations
 
       _drawBlade(canvas, i);
 
-      canvas.restore();
+      canvas.restore(); // ignore: cascade_invocations
     }
 
     // Draw Hub Cap
@@ -606,10 +605,9 @@ class TurbineBladesPainter extends CustomPainter {
       ..quadraticBezierTo(24, -90, 5, -17)
       ..close();
 
-    // Draw White Blade
+    // Draw White Blade and Tip with Clipping
     canvas
       ..drawPath(path, paint)
-      // Draw Tip with Clipping
       ..save()
       ..clipPath(path)
       ..drawRect(

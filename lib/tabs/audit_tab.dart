@@ -500,15 +500,18 @@ class _AuditTabState extends State<AuditTab> {
                                       onChanged: selectedModelId == null ? null : (value) {
                                         setSheetState(() => selectedTurbineId = value);
                                       },
+
                                       items: () {
-                                        return (List<Map<String, dynamic>>.from(visibleTurbines)
-                                          ..sort((a, b) {
-                                            final aHas = turbineDrafts[a['id']] ?? false;
-                                            final bHas = turbineDrafts[b['id']] ?? false;
-                                            if (aHas && !bHas) return -1;
-                                            if (!aHas && bHas) return 1;
-                                            return 0;
-                                          }))
+                                        final list = List<Map<String, dynamic>>.from(visibleTurbines);
+                                        // ignore: cascade_invocations
+                                        list.sort((a, b) {
+                                          final aHas = turbineDrafts[a['id']] ?? false;
+                                          final bHas = turbineDrafts[b['id']] ?? false;
+                                          if (aHas && !bHas) return -1;
+                                          if (!aHas && bHas) return 1;
+                                          return 0;
+                                        });
+                                        return list
                                             .map((doc) => SearchableDropdownItem<String>(
                                               value: doc['id'] as String,
                                               label: doc['turbine_name']?.toString() ??
