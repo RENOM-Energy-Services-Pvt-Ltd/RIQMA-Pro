@@ -22,20 +22,19 @@ const messaging = getMessaging();
  * @returns {string} Formatted time string
  */
 function formatTime(timestamp) {
-  if (!timestamp || !timestamp.toDate) {
-    return new Date().toLocaleTimeString("en-IN", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  }
-
-  const date = timestamp.toDate();
-  return date.toLocaleTimeString("en-IN", {
+  const options = {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  });
+    timeZone: "Asia/Kolkata", // Explicitly set to IST
+  };
+
+  if (!timestamp || !timestamp.toDate) {
+    return new Date().toLocaleTimeString("en-IN", options);
+  }
+
+  const date = timestamp.toDate();
+  return date.toLocaleTimeString("en-IN", options);
 }
 
 /**

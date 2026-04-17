@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:provider/provider.dart';
+import '../providers/app_settings_provider.dart';
 import '../services/audit_manager.dart';
 import 'audit_search_screen.dart';
 
@@ -194,14 +196,26 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   List<QueryDocumentSnapshot> _tasks = [];
 
-  void _nextPage() {
-    if (_tasks.isEmpty) return;
+  bool _validateTask() {
+    if (_tasks.isEmpty) return true;
     
+    final appSettings = Provider.of<AppSettingsProvider>(context, listen: false);
     final currentTaskId = _tasks[_currentPage].id;
     final currentData = auditData[currentTaskId];
     
-    if (currentData != null && currentData['status'] == 'Not OK') {
-      final photos = currentData['photos'] as List<dynamic>?;
+    final status = currentData?['status'];
+    final observation = currentData?['observation'] as String?;
+    
+    // Check Mandatory Observation (regardless of status)
+    if (appSettings.mandatoryObservationText && (observation == null || observation.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Observation is mandatory'), backgroundColor: Colors.red),
+      );
+      return false;
+    }
+
+    if (status == 'Not OK') {
+      final photos = currentData?['photos'] as List<dynamic>?;
       if (photos == null || photos.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -209,19 +223,37 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
             backgroundColor: Colors.red,
           ),
         );
-        return;
+        return false;
       }
 
-      if (currentData['sub_status'] == null) {
+      if (currentData?['sub_status'] == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please select a severity level (Aobs, MCF, CF)'),
             backgroundColor: Colors.red,
           ),
         );
-        return;
+        return false;
+      }
+
+      // Strict Navigation Check
+      if (appSettings.restrictNavWithoutDetails) {
+        if (observation == null || observation.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Observation is required for "Not OK" status'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return false;
+        }
       }
     }
+    return true;
+  }
+
+  void _nextPage() {
+    if (!_validateTask()) return;
 
     if (_currentPage < _totalDocs - 1) {
       _pageController.nextPage(
@@ -235,33 +267,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   void _saveAndReturn() {
-    if (_tasks.isNotEmpty) {
-      final currentTaskId = _tasks[_currentPage].id;
-      final currentData = auditData[currentTaskId];
-      
-      if (currentData != null && currentData['status'] == 'Not OK') {
-        final photos = currentData['photos'] as List<dynamic>?;
-        if (photos == null || photos.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please attach a photo for "Not OK" status'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-
-        if (currentData['sub_status'] == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please select a severity level (Aobs, MCF, CF)'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-      }
-    }
+    if (!_validateTask()) return;
 
     AuditManager.instance.flush();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -831,6 +837,9 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                 _buildModernTextField(
                   controller: _observationController,
                   label: 'Observation',
+                  isMandatory: Provider.of<AppSettingsProvider>(context).mandatoryObservationText || 
+                              (Provider.of<AppSettingsProvider>(context).restrictNavWithoutDetails && 
+                               widget.initialAnswer['status'] == 'Not OK'),
                   icon: Icons.visibility_outlined,
                   onChanged: (val) => widget.onAnswerChanged('observation', val, shouldSetState: false),
                   suffixIcon: IconButton(
@@ -956,6 +965,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     required String label,
     required IconData icon,
     required void Function(String) onChanged,
+    bool isMandatory = false,
     Widget? suffixIcon,
   }) {
     return TextField(
@@ -964,7 +974,14 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
       maxLines: 3,
       style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
       decoration: InputDecoration(
-        labelText: label,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            if (isMandatory)
+              const Text(' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
         labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
         alignLabelWithHint: true,
         suffixIcon: suffixIcon,

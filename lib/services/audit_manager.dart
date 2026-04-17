@@ -266,4 +266,68 @@ class AuditManager {
       return false;
     }
   }
+
+  /// Get all local drafts metadata
+  Future<List<Map<String, dynamic>>> getAllDraftsMetadata() async {
+    final prefs = await SharedPreferences.getInstance();
+    final allKeys = prefs.getKeys();
+    final metadataKeys = allKeys.where((k) => k.startsWith('audit_metadata_'));
+    
+    final drafts = <Map<String, dynamic>>[];
+    for (var key in metadataKeys) {
+      final jsonString = prefs.getString(key);
+      if (jsonString != null) {
+        try {
+          final data = json.decode(jsonString) as Map<String, dynamic>;
+          // Extract draftId from key
+          final draftId = key.replaceFirst('audit_metadata_', '');
+          data['draft_id'] = draftId;
+          drafts.add(data);
+        } catch (e) {
+          debugPrint('Error decoding metadata for $key: $e');
+        }
+      }
+    }
+    
+    // Sort by timestamp descending (newest first)
+    drafts.sort((a, b) {
+      final tA = a['timestamp'] as String? ?? '';
+      final tB = b['timestamp'] as String? ?? '';
+      return tB.compareTo(tA);
+    });
+    
+    return drafts;
+  }
+
+  /// Delete a specific draft from disk and SharedPreferences
+  Future<void> deleteDraft(String draftId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // 1. Remove Metadata
+      await prefs.remove('audit_metadata_$draftId');
+      
+      // 2. Remove Data File
+      final fileName = 'audit_data_$draftId.json';
+      if (kIsWeb) {
+        await prefs.remove(fileName);
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$fileName');
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+      
+      // 3. If it was the current session, clear it
+      if (_currentDraftId == draftId) {
+        clearSession();
+      }
+      
+      debugPrint('🗑️ Draft $draftId deleted successfully');
+    } catch (e) {
+      debugPrint('❌ Error deleting draft $draftId: $e');
+      rethrow;
+    }
+  }
 }

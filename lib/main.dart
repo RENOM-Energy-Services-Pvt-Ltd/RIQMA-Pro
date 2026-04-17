@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import 'dashboard_screen.dart';
 import 'firebase_options.dart';
+import 'providers/app_settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/splash_screen.dart';
@@ -50,8 +51,11 @@ Future<void> main() async {
   
   // 6. Run App
   runApp(
-    ChangeNotifierProvider<ThemeProvider>(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider<AppSettingsProvider>(create: (_) => AppSettingsProvider()),
+      ],
       child: MyApp(),
     ),
   );
