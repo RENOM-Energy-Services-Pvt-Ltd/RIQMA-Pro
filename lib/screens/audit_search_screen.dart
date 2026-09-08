@@ -304,6 +304,10 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
   // ─────────────────── NAVIGATION ───────────────────
 
   void _navigateToTask(_SearchableTask task) {
+    // Dismiss keyboard immediately before navigation
+    _focusNode.unfocus();
+    FocusScope.of(context).unfocus();
+
     Navigator.push(
       context,
       MaterialPageRoute<void>(
@@ -314,6 +318,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
           mainCategoryRef: task.mainCategoryRef,
           initialTaskId: task.taskId,
           draftId: widget.draftId,
+          turbineId: widget.turbineModelRef.id,
         ),
       ),
     ).then((_) {
