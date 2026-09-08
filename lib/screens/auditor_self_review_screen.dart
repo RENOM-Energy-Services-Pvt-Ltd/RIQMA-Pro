@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
+import '../widgets/network_stability_dialog.dart';
 
 /// Pre-submission quality gate screen.
 /// Shows a categorized summary of all audit answers,
@@ -343,9 +345,15 @@ class AuditorSelfReviewScreen extends StatelessWidget {
               onPressed: pendingCount > 0 
                 ? null 
                 : () {
-                    // Pop this screen first, then trigger submit in parent
-                    Navigator.of(context).pop();
-                    onConfirmSubmit();
+                    // Check network stability before popping screen and submitting
+                    unawaited(NetworkStabilityDialog.show(
+                      context: context,
+                      onStabilityConfirmed: () {
+                        // Pop this review screen, then trigger submit in parent
+                        Navigator.of(context).pop();
+                        onConfirmSubmit();
+                      },
+                    ));
                   },
               icon: Icon(
                 pendingCount > 0 ? Icons.lock_outline_rounded : Icons.check_circle_outline, 

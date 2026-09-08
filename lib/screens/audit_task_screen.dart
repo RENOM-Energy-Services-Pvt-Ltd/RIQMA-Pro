@@ -38,6 +38,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   int _totalDocs = 0;
+  bool _hasJumpedToInitialTask = false;
 
   // Store answers by task ID
   // Structure: { 'taskId': { 'status': 'OK'/'Not OK', 'observation': '...', 'remarks': '...', 'photos': ['path1', 'path2'] } }
@@ -386,13 +387,13 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                       });
                     }
                     
-                    // Handle deep linking to specific task
-                    if (widget.initialTaskId != null && _pageController.hasClients) {
+                    // Handle deep linking to specific task (only once on initial load)
+                    if (widget.initialTaskId != null && !_hasJumpedToInitialTask && _pageController.hasClients) {
                       final index = tasks.indexWhere((doc) => doc.id == widget.initialTaskId);
-                      if (index != -1 && _currentPage != index) {
+                      if (index != -1) {
+                         _hasJumpedToInitialTask = true;
+                         _currentPage = index;
                          _pageController.jumpToPage(index);
-                         // Clear it so it doesn't jump again on rebuilds (though widget is immutable, this runs once per build)
-                         // Ideally we'd use a local flag but this is a quick fix for the initial load
                       }
                     }
                   }
@@ -466,14 +467,39 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            if (_currentPage > 0)
-              TextButton.icon(
-                onPressed: _previousPage,
-                icon: const Icon(Icons.arrow_back, color: Colors.grey),
-                label: const Text('Previous', style: TextStyle(color: Colors.grey)),
-              )
-            else
-              const SizedBox(width: 100),
+            Container(
+              width: 105,
+              alignment: Alignment.centerLeft,
+              child: _currentPage > 0
+                  ? TextButton.icon(
+                      onPressed: _previousPage,
+                      icon: const Icon(Icons.arrow_back, color: Colors.grey, size: 18),
+                      label: const Text('Previous', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            
+            // Checkpoint Counter (e.g. 01/10)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A237E).withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF1A237E).withValues(alpha: 0.15),
+                ),
+              ),
+              child: Text(
+                '${_totalDocs > 0 ? (_currentPage + 1).toString().padLeft(2, '0') : '00'}/${_totalDocs.toString().padLeft(2, '0')}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A237E),
+                  fontFamily: 'Outfit',
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
             
             Container(
               decoration: BoxDecoration(

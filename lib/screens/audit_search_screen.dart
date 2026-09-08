@@ -126,6 +126,11 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
 
         for (var subCatDoc in subCatsSnapshot.docs) {
           final subCatData = subCatDoc.data();
+          final isAllModels = subCatData['is_all_models'] == true;
+          final targetModels = subCatData['target_models'] as List<dynamic>? ?? [];
+          final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
+          if (!isApplicable) continue;
+
           final subCatName = (subCatData['name'] as String?) ?? 'Unknown';
 
           // 3. Get tasks
@@ -186,9 +191,13 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
     });
   }
 
+  String _normalize(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[\s_\-\(\)\+\/\.:]+'), '');
+
   void _performSearch(String query) {
     final trimmed = query.trim().toLowerCase();
-    if (trimmed.isEmpty) {
+    final queryNorm = _normalize(query);
+    if (trimmed.isEmpty || queryNorm.isEmpty) {
       setState(() {
         _query = '';
         _filteredTasks = [];
@@ -208,46 +217,71 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
     for (var task in _allTasks) {
       double score = 0;
       final titleLower = task.title.toLowerCase();
+      final titleNorm = _normalize(task.title);
       final observationLower = task.observation.toLowerCase();
+      final obsNorm = _normalize(task.observation);
       final descLower = task.description.toLowerCase();
+      final descNorm = _normalize(task.description);
       final mainCatLower = task.mainCategoryName.toLowerCase();
+      final mainCatNorm = _normalize(task.mainCategoryName);
       final subCatLower = task.subCategoryName.toLowerCase();
+      final subCatNorm = _normalize(task.subCategoryName);
+      final refLower = task.referenceOfTask.toLowerCase();
+      final refNorm = _normalize(task.referenceOfTask);
 
-      // 1. Exact match in title (Highest)
-      if (titleLower == trimmed) {
+      // 1. Normalized exact / start / contains match (Space & Punctuation Insensitive)
+      if (titleNorm == queryNorm) {
         score += 500;
+      } else if (titleNorm.startsWith(queryNorm)) {
+        score += 250;
+      } else if (titleNorm.contains(queryNorm)) {
+        score += 150;
       }
-      // 2. Title starts with query
-      else if (titleLower.startsWith(trimmed)) {
-        score += 200;
+
+      // 2. Category & Reference match (e.g. "tower wtg" or "towerwtg")
+      if (subCatNorm.contains(queryNorm)) {
+        score += 120;
       }
-      // 3. Title contains query
-      else if (titleLower.contains(trimmed)) {
+      if (mainCatNorm.contains(queryNorm)) {
         score += 100;
       }
-
-      // 4. Observation match (High priority if enabled)
-      if (_searchInObservations && observationLower.contains(trimmed)) {
-        score += 150;
-        // Exact observation match bonus
-        if (observationLower == trimmed) score += 100;
+      if (refNorm.contains(queryNorm)) {
+        score += 120;
       }
 
-      // 5. Per-word matching (Better than contains)
+      // 3. Observation match
+      if (_searchInObservations) {
+        if (obsNorm.contains(queryNorm)) {
+          score += 150;
+          if (obsNorm == queryNorm) score += 100;
+        }
+      }
+
+      // 4. Per-word matching (tokenized for multiple words)
       var wordsFoundInTitle = 0;
       for (var word in queryWords) {
-        if (titleLower.contains(word)) {
+        final wordNorm = _normalize(word);
+        if (titleLower.contains(word) || (wordNorm.isNotEmpty && titleNorm.contains(wordNorm))) {
           wordsFoundInTitle++;
           score += 40;
         }
-        if (_searchInObservations && observationLower.contains(word)) {
+        if (_searchInObservations && (observationLower.contains(word) || (wordNorm.isNotEmpty && obsNorm.contains(wordNorm)))) {
           score += 20;
         }
-        if (subCatLower.contains(word)) score += 15;
-        if (mainCatLower.contains(word)) score += 10;
-        if (descLower.contains(word)) score += 5;
+        if (subCatLower.contains(word) || (wordNorm.isNotEmpty && subCatNorm.contains(wordNorm))) {
+          score += 20;
+        }
+        if (mainCatLower.contains(word) || (wordNorm.isNotEmpty && mainCatNorm.contains(wordNorm))) {
+          score += 15;
+        }
+        if (descLower.contains(word) || (wordNorm.isNotEmpty && descNorm.contains(wordNorm))) {
+          score += 10;
+        }
+        if (refLower.contains(word) || (wordNorm.isNotEmpty && refNorm.contains(wordNorm))) {
+          score += 25;
+        }
       }
-      
+
       // Bonus if all query words found in title
       if (wordsFoundInTitle == queryWords.length && queryWords.length > 1) {
         score += 100;
