@@ -35,10 +35,10 @@ class AuditTaskScreen extends StatefulWidget {
 }
 
 class _AuditTaskScreenState extends State<AuditTaskScreen> {
-  PageController? _pageController;
+  final PageController _pageController = PageController();
   int _currentPage = 0;
   int _totalDocs = 0;
-  bool _controllerInitialized = false;
+  bool _hasJumpedToInitialTask = false;
 
   // Store answers by task ID
   // Structure: { 'taskId': { 'status': 'OK'/'Not OK', 'observation': '...', 'remarks': '...', 'photos': ['path1', 'path2'] } }
@@ -104,7 +104,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   @override
   void dispose() {
-    _pageController?.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -199,7 +199,6 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   bool _validateTask() {
     if (_tasks.isEmpty) return true;
-    if (_currentPage < 0 || _currentPage >= _tasks.length) return true;
     
     final appSettings = Provider.of<AppSettingsProvider>(context, listen: false);
     final currentTaskId = _tasks[_currentPage].id;
@@ -258,7 +257,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
     if (!_validateTask()) return;
 
     if (_currentPage < _totalDocs - 1) {
-      _pageController?.nextPage(
+      _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -284,7 +283,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   void _previousPage() {
     if (_currentPage > 0) {
-      _pageController?.previousPage(
+      _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -295,7 +294,6 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA), // Soft grey-blue background
-      resizeToAvoidBottomInset: false, // Prevents keyboard from pushing bottom navigation bar to center
       body: Column(
         children: [
           Container(
@@ -378,25 +376,31 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                 }
 
                 final tasks = snapshot.data!.docs;
-                _tasks = tasks;
                 _totalDocs = tasks.length;
+                
+                // Update local tasks list for validation
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    if (_tasks.length != tasks.length) {
+                      setState(() {
+                        _tasks = tasks;
+                      });
+                    }
+                    
+                    // Handle deep linking to specific task (only once on initial load)
+                    if (widget.initialTaskId != null && !_hasJumpedToInitialTask && _pageController.hasClients) {
+                      final index = tasks.indexWhere((doc) => doc.id == widget.initialTaskId);
+                      if (index != -1) {
+                        _hasJumpedToInitialTask = true;
+                        _currentPage = index;
+                        _pageController.jumpToPage(index);
+                      }
+                    }
+                  }
+                });
 
                 if (tasks.isEmpty) {
                   return const Center(child: Text('No tasks found for this category.'));
-                }
-
-                // Initialize PageController directly to initial task index on first load
-                if (!_controllerInitialized) {
-                  var startIndex = 0;
-                  if (widget.initialTaskId != null) {
-                    final idx = tasks.indexWhere((doc) => doc.id == widget.initialTaskId);
-                    if (idx != -1) {
-                      startIndex = idx;
-                    }
-                  }
-                  _currentPage = startIndex;
-                  _pageController = PageController(initialPage: startIndex);
-                  _controllerInitialized = true;
                 }
 
                 return PageView.builder(
@@ -424,7 +428,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                     return TaskPageItem(
                       key: ValueKey(taskId),
                       taskData: taskData,
-                      referenceName: referenceName,
+                      referenceName: referenceName, // This is already prioritized in the parent via _referenceNames
                       rootCauses: _rootCauses,
                       initialAnswer: auditData[taskId] ?? {},
                       onAnswerChanged: (key, value, {bool shouldSetState = true}) {
@@ -436,7 +440,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                         }
                       },
                       onCapturePhoto: () => _capturePhoto(taskId),
-                      turbineModelRef: widget.mainCategoryRef,
+                      turbineModelRef: widget.mainCategoryRef, // Using mainCategoryRef as turbineModelRef based on context in AuditTaskScreen
                       draftId: widget.draftId,
                     );
                   },
@@ -446,92 +450,87 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).brightness == Brightness.dark 
-                    ? Colors.black.withValues(alpha: 0.3) 
-                    : Colors.black.withValues(alpha: 0.05),
-                blurRadius: 20,
-                offset: const Offset(0, -5),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(20.0),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.black.withValues(alpha: 0.3) 
+                  : Colors.black.withValues(alpha: 0.05),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (_currentPage > 0)
+              TextButton.icon(
+                onPressed: _previousPage,
+                icon: const Icon(Icons.arrow_back, color: Colors.grey),
+                label: const Text('Previous', style: TextStyle(color: Colors.grey)),
+              )
+            else
+              const SizedBox(width: 80),
+
+            // Checkpoint Counter (e.g. 01/10)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A237E).withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF1A237E).withValues(alpha: 0.15),
+                ),
               ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 105,
-                alignment: Alignment.centerLeft,
-                child: _currentPage > 0
-                    ? TextButton.icon(
-                        onPressed: _previousPage,
-                        icon: const Icon(Icons.arrow_back, color: Colors.grey, size: 18),
-                        label: const Text('Previous', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      )
-                    : const SizedBox.shrink(),
+              child: Text(
+                '${_totalDocs > 0 ? (_currentPage + 1).toString().padLeft(2, '0') : '00'}/${_totalDocs.toString().padLeft(2, '0')}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A237E),
+                  fontFamily: 'Outfit',
+                  letterSpacing: 1.2,
+                ),
               ),
-              
-              // Checkpoint Counter (e.g. 09/12)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A237E).withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF1A237E).withValues(alpha: 0.15),
+            ),
+
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00E5FF), Color(0xFF00897B)],
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: _currentPage == _totalDocs - 1 ? _saveAndReturn : _nextPage,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 child: Text(
-                  '${_totalDocs > 0 ? (_currentPage + 1).toString().padLeft(2, '0') : '00'}/${_totalDocs.toString().padLeft(2, '0')}',
+                  _currentPage == _totalDocs - 1 ? 'Save & Return' : 'Next',
                   style: const TextStyle(
-                    fontSize: 14,
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A237E),
-                    fontFamily: 'Outfit',
-                    letterSpacing: 1.2,
+                    fontSize: 16,
                   ),
                 ),
               ),
-              
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00E5FF), Color(0xFF00897B)],
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ElevatedButton(
-                  onPressed: _currentPage == _totalDocs - 1 ? _saveAndReturn : _nextPage,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                  child: Text(
-                    _currentPage == _totalDocs - 1 ? 'Save & Return' : 'Next',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -572,11 +571,11 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     // Ensure static data (question title) is saved
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialAnswer['question'] == null) {
-        widget.onAnswerChanged('question', widget.taskData['title'] ?? 'Unknown Question', shouldSetState: false);
+        widget.onAnswerChanged('question', widget.taskData['title'] ?? 'Unknown Question');
       }
       // Ensure reference name is saved if missing
       if (widget.initialAnswer['reference_name'] == null) {
-        widget.onAnswerChanged('reference_name', widget.referenceName, shouldSetState: false);
+        widget.onAnswerChanged('reference_name', widget.referenceName);
       }
     });
   }

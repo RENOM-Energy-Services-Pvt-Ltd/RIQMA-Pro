@@ -55,21 +55,16 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeDataAndSubscriptions();
-  }
-
-  Future<void> _initializeDataAndSubscriptions() async {
-    // 1. Initialize AuditManager with a specific draft ID for this session
+    // Initialize AuditManager with a specific draft ID for this session
+    // This prevents data mixing between different turbines/plans
     final uniqueDraftId = '${widget.planId ?? "unplanned"}_${widget.turbineId}';
-    await AuditManager.instance.init(draftId: uniqueDraftId);
+    AuditManager.instance.init(draftId: uniqueDraftId);
 
-    if (!mounted) return;
-
-    // 2. Subscribe to both category streams and merge results
+    // Subscribe to both category streams and merge results
     _subscribeToCategories();
 
-    // 3. Log audit start event
-    unawaited(ActivityLogService.instance.logActivity(
+    // Log audit start event
+    ActivityLogService.instance.logActivity(
       actionType: 'AUDIT_START',
       description: 'Started audit for ${widget.siteName} - ${widget.turbineName}',
       metadata: {
@@ -80,7 +75,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         'stateName': widget.stateName,
         'planId': widget.planId,
       },
-    ));
+    );
   }
 
   /// Subscribe to two Firestore streams and merge them into [_categories].
@@ -1068,14 +1063,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         .get();
     
     for (var subCategoryDoc in subCategoriesSnapshot.docs) {
-      final subData = subCategoryDoc.data();
-      final isAllModels = subData['is_all_models'] == true;
-      final targetModels = subData['target_models'] as List<dynamic>? ?? [];
-      
-      // Filter sub-category by turbine model (matching display logic)
-      final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
-      if (!isApplicable) continue;
-
       final tasksSnapshot = await FirebaseFirestore.instance
           .collection('tasks')
           .where('sub_categories_ref', isEqualTo: subCategoryDoc.reference)
@@ -1316,14 +1303,6 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           .get();
           
       for (var subCatDoc in subCatsQuery.docs) {
-        final subData = subCatDoc.data();
-        final isAllModels = subData['is_all_models'] == true;
-        final targetModels = subData['target_models'] as List<dynamic>? ?? [];
-        
-        // Filter sub-category by turbine model
-        final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
-        if (!isApplicable) continue;
-
         final subCatName = subCatDoc.get('name')?.toString() ?? 'Unknown';
         
         // 3. Get Tasks
