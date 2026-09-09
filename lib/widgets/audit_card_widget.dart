@@ -195,3 +195,155 @@ class AuditCard extends StatelessWidget {
     );
   }
 }
+
+class AuditCardSkeleton extends StatefulWidget {
+  const AuditCardSkeleton({super.key});
+
+  @override
+  State<AuditCardSkeleton> createState() => _AuditCardSkeletonState();
+}
+
+class _AuditCardSkeletonState extends State<AuditCardSkeleton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.35, end: 0.85).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        final shimmerColor = baseColor.withValues(alpha: _animation.value);
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E2433) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Row: Icon skeleton + Tag skeleton
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: shimmerColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  Container(
+                    width: 58,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: shimmerColor,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // Title skeleton (2 lines)
+              Container(
+                width: double.infinity,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmerColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: 90,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmerColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 14),
+              // Stats Row (3 pill boxes)
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: shimmerColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: shimmerColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: shimmerColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // Progress Bar skeleton
+              Container(
+                width: double.infinity,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: shimmerColor,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

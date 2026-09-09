@@ -978,7 +978,18 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
   /// Uses CustomScrollView with SliverStickyHeader for pinned category headers.
   Widget _buildCategoriesBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 1.3,
+        ),
+        itemCount: 6,
+        itemBuilder: (context, index) => const AuditCardSkeleton(),
+      );
     }
 
     if (_categories.isEmpty) {
@@ -1013,6 +1024,9 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         return FutureBuilder<Map<String, int>>(
           future: _calculateProgress(doc.reference),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const AuditCardSkeleton();
+            }
             final stats = snapshot.data ?? {'total': 0, 'ok': 0, 'notOk': 0, 'na': 0};
             final total = stats['total'] ?? 0;
             final ok = stats['ok'] ?? 0;
@@ -1063,6 +1077,12 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         .get();
     
     for (var subCategoryDoc in subCategoriesSnapshot.docs) {
+      final subData = subCategoryDoc.data();
+      final isAllModels = subData['is_all_models'] == true;
+      final targetModels = (subData['target_models'] as List<dynamic>?) ?? [];
+      final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
+      if (!isApplicable) continue;
+
       final tasksSnapshot = await FirebaseFirestore.instance
           .collection('tasks')
           .where('sub_categories_ref', isEqualTo: subCategoryDoc.reference)
@@ -1303,6 +1323,12 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
           .get();
           
       for (var subCatDoc in subCatsQuery.docs) {
+        final subData = subCatDoc.data();
+        final isAllModels = subData['is_all_models'] == true;
+        final targetModels = (subData['target_models'] as List<dynamic>?) ?? [];
+        final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
+        if (!isApplicable) continue;
+
         final subCatName = subCatDoc.get('name')?.toString() ?? 'Unknown';
         
         // 3. Get Tasks

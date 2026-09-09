@@ -190,7 +190,18 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? GridView.builder(
+              padding: const EdgeInsets.all(16.0),
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 1.3,
+              ),
+              itemCount: 4,
+              itemBuilder: (context, index) => const AuditCardSkeleton(),
+            )
           : _subCategories.isEmpty
               ? Center(
                   child: Column(
@@ -221,6 +232,9 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                 return FutureBuilder<Map<String, int>>(
                   future: _calculateSubCategoryProgress(doc.reference),
                   builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                      return const AuditCardSkeleton();
+                    }
                     final stats = snapshot.data ?? {'total': 0, 'ok': 0, 'notOk': 0, 'na': 0};
                     final total = stats['total'] ?? 0;
                     final ok = stats['ok'] ?? 0;
