@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -110,8 +111,11 @@ class AuditManager {
     required String stateName,
     required String modelId,
     required String modelName,
+    String? draftId,
+    String? planId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final effectiveDraftId = draftId ?? _currentDraftId ?? '${planId ?? "unplanned"}_$turbineId';
     final metadata = {
       'siteId': siteId,
       'siteName': siteName,
@@ -120,9 +124,13 @@ class AuditManager {
       'stateName': stateName,
       'modelId': modelId,
       'modelName': modelName,
+      'planId': planId,
       'timestamp': DateTime.now().toIso8601String(),
     };
-    await prefs.setString(_metadataKey, json.encode(metadata));
+    await prefs.setString('audit_metadata_$effectiveDraftId', json.encode(metadata));
+    if (_currentDraftId == null && (planId == null || planId == 'unplanned')) {
+      await prefs.setString('current_audit_metadata', json.encode(metadata));
+    }
   }
 
   /// Get draft metadata
@@ -151,6 +159,23 @@ class AuditManager {
   void saveAnswer(String taskId, Map<String, dynamic> data) {
     _localData[taskId] = data;
     _scheduleSave();
+    _touchMetadataTimestamp();
+  }
+
+  void _touchMetadataTimestamp() {
+    if (_currentDraftId == null) return;
+    unawaited(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final key = 'audit_metadata_$_currentDraftId';
+        final existing = prefs.getString(key);
+        if (existing != null) {
+          final map = json.decode(existing) as Map<String, dynamic>;
+          map['timestamp'] = DateTime.now().toIso8601String();
+          await prefs.setString(key, json.encode(map));
+        }
+      } catch (_) {}
+    }());
   }
 
   /// Schedules a debounced save operation
@@ -254,8 +279,10 @@ class AuditManager {
   static Future<bool> draftExists(String draftId) async {
     final fileName = 'audit_data_$draftId.json';
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey('audit_metadata_$draftId')) return true;
+
       if (kIsWeb) {
-        final prefs = await SharedPreferences.getInstance();
         return prefs.containsKey(fileName);
       } else {
         final directory = await getApplicationDocumentsDirectory();
@@ -267,67 +294,373 @@ class AuditManager {
     }
   }
 
-  /// Get all local drafts metadata
-  Future<List<Map<String, dynamic>>> getAllDraftsMetadata() async {
+  /// Get all local drafts as rich summaries by scanning both Disk and SharedPreferences
+  Future<List<DraftAuditSummary>> getAllIncompleteAudits() async {
     final prefs = await SharedPreferences.getInstance();
     final allKeys = prefs.getKeys();
-    final metadataKeys = allKeys.where((k) => k.startsWith('audit_metadata_'));
-    
-    final drafts = <Map<String, dynamic>>[];
-    for (var key in metadataKeys) {
-      final jsonString = prefs.getString(key);
-      if (jsonString != null) {
-        try {
-          final data = json.decode(jsonString) as Map<String, dynamic>;
-          // Extract draftId from key
-          final draftId = key.replaceFirst('audit_metadata_', '');
-          data['draft_id'] = draftId;
-          drafts.add(data);
-        } catch (e) {
-          debugPrint('Error decoding metadata for $key: $e');
+
+    // Set of all discovered unique draft IDs
+    final discoveredDraftIds = <String>{};
+
+    // 1. Discover from SharedPreferences metadata keys
+    for (var key in allKeys) {
+      if (key.startsWith('audit_metadata_')) {
+        final dId = key.replaceFirst('audit_metadata_', '');
+        if (dId.isNotEmpty) discoveredDraftIds.add(dId);
+      } else if (key == 'current_audit_metadata') {
+        discoveredDraftIds.add('current');
+      }
+    }
+
+    // 2. Discover from File System (Mobile / Desktop)
+    final fileMap = <String, File>{};
+    if (!kIsWeb) {
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final entities = directory.listSync();
+        for (var entity in entities) {
+          if (entity is File) {
+            final fileName = p.basename(entity.path);
+            if (fileName.startsWith('audit_data_') && fileName.endsWith('.json')) {
+              final dId = fileName.substring('audit_data_'.length, fileName.length - '.json'.length);
+              if (dId.isNotEmpty) {
+                discoveredDraftIds.add(dId);
+                fileMap[dId] = entity;
+              }
+            } else if (fileName == 'current_audit_data.json') {
+              discoveredDraftIds.add('current');
+              fileMap['current'] = entity;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error scanning directory for drafts: $e');
+      }
+    } else {
+      // For Web, scan prefs for data files
+      for (var key in allKeys) {
+        if (key.startsWith('audit_data_') && key.endsWith('.json')) {
+          final dId = key.substring('audit_data_'.length, key.length - '.json'.length);
+          if (dId.isNotEmpty) discoveredDraftIds.add(dId);
+        } else if (key == 'current_audit_data.json') {
+          discoveredDraftIds.add('current');
         }
       }
     }
-    
-    // Sort by timestamp descending (newest first)
-    drafts.sort((a, b) {
-      final tA = a['timestamp'] as String? ?? '';
-      final tB = b['timestamp'] as String? ?? '';
-      return tB.compareTo(tA);
+
+    final summaries = <DraftAuditSummary>[];
+
+    for (var draftId in discoveredDraftIds) {
+      try {
+        // Load metadata
+        Map<String, dynamic>? meta;
+        final metaKey = draftId == 'current' ? 'current_audit_metadata' : 'audit_metadata_$draftId';
+        final metaStr = prefs.getString(metaKey);
+        if (metaStr != null) {
+          try {
+            meta = json.decode(metaStr) as Map<String, dynamic>?;
+          } catch (_) {}
+        }
+
+        // Load audit answers data
+        var answers = <String, dynamic>{};
+        DateTime? lastModified;
+
+        if (kIsWeb) {
+          final dataKey = draftId == 'current' ? 'current_audit_data.json' : 'audit_data_$draftId.json';
+          final dataStr = prefs.getString(dataKey);
+          if (dataStr != null) {
+            try {
+              answers = json.decode(dataStr) as Map<String, dynamic>;
+            } catch (_) {}
+          }
+        } else {
+          var targetFile = fileMap[draftId];
+          if (targetFile == null) {
+            final directory = await getApplicationDocumentsDirectory();
+            final fileName = draftId == 'current' ? 'current_audit_data.json' : 'audit_data_$draftId.json';
+            targetFile = File('${directory.path}/$fileName');
+          }
+
+          if (await targetFile.exists()) {
+            lastModified = await targetFile.lastModified();
+            try {
+              final content = await targetFile.readAsString();
+              if (content.trim().isNotEmpty) {
+                final decoded = json.decode(content);
+                if (decoded is Map<String, dynamic>) {
+                  answers = decoded;
+                }
+              }
+            } catch (e) {
+              debugPrint('Error reading draft file for $draftId: $e');
+            }
+          }
+        }
+
+        // Calculate statistics from answers
+        var okCount = 0;
+        var notOkCount = 0;
+        var naCount = 0;
+        var observationCount = 0;
+        var photoCount = 0;
+        final photoPaths = <String>[];
+
+        for (var taskEntry in answers.values) {
+          if (taskEntry is Map<String, dynamic>) {
+            final status = taskEntry['status']?.toString().trim().toLowerCase();
+            if (status == 'ok') {
+              okCount++;
+            } else if (status == 'not ok') {
+              notOkCount++;
+            } else if (status == 'n/a' || status == 'na') {
+              naCount++;
+            }
+
+            final obs = taskEntry['observation']?.toString().trim();
+            if (obs != null && obs.isNotEmpty) {
+              observationCount++;
+            }
+
+            final photos = taskEntry['photos'];
+            if (photos is List) {
+              photoCount += photos.length;
+              for (var p in photos) {
+                if (p is String && p.isNotEmpty) photoPaths.add(p);
+              }
+            }
+
+            final closurePhoto = taskEntry['closure_photo_local_path'];
+            if (closurePhoto is String && closurePhoto.isNotEmpty) {
+              photoCount++;
+              photoPaths.add(closurePhoto);
+            }
+          }
+        }
+
+        // Determine timestamp
+        DateTime? lastSaved;
+        if (meta?['timestamp'] != null) {
+          try {
+            lastSaved = DateTime.parse(meta!['timestamp'] as String);
+          } catch (_) {}
+        }
+        if (lastSaved == null || (lastModified != null && lastModified.isAfter(lastSaved))) {
+          lastSaved = lastModified ?? lastSaved;
+        }
+
+        // Determine turbine & site names
+        var turbineName = meta?['turbineName']?.toString() ?? '';
+        var turbineId = meta?['turbineId']?.toString() ?? '';
+        final siteName = meta?['siteName']?.toString() ?? '';
+        final siteId = meta?['siteId']?.toString() ?? '';
+        final stateName = meta?['stateName']?.toString() ?? '';
+        final modelName = meta?['modelName']?.toString() ?? '';
+        var planId = meta?['planId']?.toString();
+
+        final isUnplanned = draftId.startsWith('unplanned_') || draftId == 'unplanned' || draftId == 'current' || (planId == null || planId.isEmpty);
+
+        if (turbineName.isEmpty || turbineId.isEmpty) {
+          final parts = draftId.split('_');
+          if (parts.length >= 2) {
+            if (parts[0] != 'unplanned' && planId == null) {
+              planId = parts[0];
+            }
+            turbineId = parts.sublist(1).join('_');
+            turbineName = 'Turbine $turbineId';
+          } else {
+            turbineName = draftId == 'current' ? 'Current Incomplete Audit' : 'Incomplete Audit ($draftId)';
+          }
+        }
+
+        summaries.add(DraftAuditSummary(
+          draftId: draftId,
+          turbineName: turbineName,
+          turbineId: turbineId,
+          siteName: siteName.isNotEmpty ? siteName : 'Local Storage',
+          siteId: siteId,
+          stateName: stateName,
+          modelName: modelName,
+          planId: planId,
+          lastSaved: lastSaved,
+          totalTasksAnswered: answers.length,
+          okCount: okCount,
+          notOkCount: notOkCount,
+          naCount: naCount,
+          observationCount: observationCount,
+          photoCount: photoCount,
+          photoPaths: photoPaths,
+          isUnplanned: isUnplanned,
+        ));
+      } catch (e) {
+        debugPrint('Error processing draft $draftId: $e');
+      }
+    }
+
+    // Sort newest first
+    summaries.sort((a, b) {
+      if (a.lastSaved == null && b.lastSaved == null) return 0;
+      if (a.lastSaved == null) return 1;
+      if (b.lastSaved == null) return -1;
+      return b.lastSaved!.compareTo(a.lastSaved!);
     });
-    
-    return drafts;
+
+    return summaries;
   }
 
-  /// Delete a specific draft from disk and SharedPreferences
+  /// Get all local drafts metadata (legacy compatibility)
+  Future<List<Map<String, dynamic>>> getAllDraftsMetadata() async {
+    final drafts = await getAllIncompleteAudits();
+    return drafts.map((d) => d.toMap()).toList();
+  }
+
+  /// Delete a specific draft from disk and SharedPreferences, including local photos
   Future<void> deleteDraft(String draftId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 1. Remove Metadata
       await prefs.remove('audit_metadata_$draftId');
-      
-      // 2. Remove Data File
+      if (draftId == 'current' || draftId == 'unplanned') {
+        await prefs.remove('current_audit_metadata');
+      }
+
+      // 2. Remove Data File & Clean up local photos
       final fileName = 'audit_data_$draftId.json';
       if (kIsWeb) {
         await prefs.remove(fileName);
+        if (draftId == 'current' || draftId == 'unplanned') {
+          await prefs.remove('current_audit_data.json');
+        }
       } else {
         final directory = await getApplicationDocumentsDirectory();
         final file = File('${directory.path}/$fileName');
+
+        Future<void> cleanUpPhotos(File f) async {
+          try {
+            final content = await f.readAsString();
+            if (content.trim().isNotEmpty) {
+              final decoded = json.decode(content);
+              if (decoded is Map<String, dynamic>) {
+                for (var taskEntry in decoded.values) {
+                  if (taskEntry is Map<String, dynamic>) {
+                    final photos = taskEntry['photos'];
+                    if (photos is List) {
+                      for (var p in photos) {
+                        if (p is String && !p.startsWith('http')) {
+                          try {
+                            final photoFile = File(p);
+                            if (await photoFile.exists()) {
+                              await photoFile.delete();
+                            }
+                          } catch (_) {}
+                        }
+                      }
+                    }
+                    final closurePhoto = taskEntry['closure_photo_local_path'];
+                    if (closurePhoto is String && !closurePhoto.startsWith('http')) {
+                      try {
+                        final photoFile = File(closurePhoto);
+                        if (await photoFile.exists()) {
+                          await photoFile.delete();
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error cleaning up draft photos: $e');
+          }
+        }
+
         if (await file.exists()) {
+          await cleanUpPhotos(file);
           await file.delete();
         }
+
+        if (draftId == 'current' || draftId == 'unplanned') {
+          final curFile = File('${directory.path}/current_audit_data.json');
+          if (await curFile.exists()) {
+            await cleanUpPhotos(curFile);
+            await curFile.delete();
+          }
+        }
       }
-      
+
       // 3. If it was the current session, clear it
-      if (_currentDraftId == draftId) {
+      if (_currentDraftId == draftId || (draftId == 'current' && _currentDraftId == null)) {
         clearSession();
       }
-      
+
       debugPrint('🗑️ Draft $draftId deleted successfully');
     } catch (e) {
       debugPrint('❌ Error deleting draft $draftId: $e');
       rethrow;
     }
+  }
+}
+
+/// Rich summary representation of an incomplete/pending audit draft
+class DraftAuditSummary {
+  final String draftId;
+  final String turbineName;
+  final String turbineId;
+  final String siteName;
+  final String siteId;
+  final String stateName;
+  final String modelName;
+  final String? planId;
+  final DateTime? lastSaved;
+  final int totalTasksAnswered;
+  final int okCount;
+  final int notOkCount;
+  final int naCount;
+  final int observationCount;
+  final int photoCount;
+  final List<String> photoPaths;
+  final bool isUnplanned;
+
+  DraftAuditSummary({
+    required this.draftId,
+    required this.turbineName,
+    required this.turbineId,
+    required this.siteName,
+    required this.siteId,
+    required this.stateName,
+    required this.modelName,
+    this.planId,
+    this.lastSaved,
+    this.totalTasksAnswered = 0,
+    this.okCount = 0,
+    this.notOkCount = 0,
+    this.naCount = 0,
+    this.observationCount = 0,
+    this.photoCount = 0,
+    this.photoPaths = const [],
+    this.isUnplanned = false,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'draft_id': draftId,
+      'turbineName': turbineName,
+      'turbineId': turbineId,
+      'siteName': siteName,
+      'siteId': siteId,
+      'stateName': stateName,
+      'modelName': modelName,
+      'planId': planId,
+      'timestamp': lastSaved?.toIso8601String(),
+      'totalTasksAnswered': totalTasksAnswered,
+      'okCount': okCount,
+      'notOkCount': notOkCount,
+      'naCount': naCount,
+      'observationCount': observationCount,
+      'photoCount': photoCount,
+      'photoPaths': photoPaths,
+      'isUnplanned': isUnplanned,
+    };
   }
 }

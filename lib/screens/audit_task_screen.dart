@@ -14,6 +14,52 @@ import '../providers/app_settings_provider.dart';
 import '../services/audit_manager.dart';
 import 'audit_search_screen.dart';
 
+Future<ImageSource?> _selectPhotoSource(BuildContext ctx) async {
+  final appSettings = Provider.of<AppSettingsProvider>(ctx, listen: false);
+  if (!appSettings.allowGalleryImport) {
+    return ImageSource.camera;
+  }
+
+  return showModalBottomSheet<ImageSource>(
+    context: ctx,
+    backgroundColor: Theme.of(ctx).scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetCtx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Wrap(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+              child: Text(
+                'Select Photo Source',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(sheetCtx).colorScheme.onSurface,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF1A237E)),
+              title: const Text('Take Photo (Camera)', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF00897B)),
+              title: const Text('Import from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class AuditTaskScreen extends StatefulWidget {
   final String subCategoryName;
   final DocumentReference subCategoryRef;
@@ -161,8 +207,11 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   Future<void> _capturePhoto(String taskId) async {
+    final source = await _selectPhotoSource(context);
+    if (source == null) return;
+
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera);
+    final image = await picker.pickImage(source: source);
 
     if (image != null) {
       String finalPath;
@@ -192,6 +241,23 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
       }
       final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? [])..add(finalPath);
       _updateAnswer(taskId, 'photos', currentPhotos);
+    }
+  }
+
+  Future<void> _removePhoto(String taskId, String photoPath) async {
+    if (!auditData.containsKey(taskId)) return;
+    final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? [])..remove(photoPath);
+    _updateAnswer(taskId, 'photos', currentPhotos);
+
+    if (!kIsWeb) {
+      try {
+        final file = File(photoPath);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (e) {
+        debugPrint('Error deleting photo file: $e');
+      }
     }
   }
 
@@ -440,6 +506,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                         }
                       },
                       onCapturePhoto: () => _capturePhoto(taskId),
+                      onRemovePhoto: (path) => _removePhoto(taskId, path),
                       turbineModelRef: widget.mainCategoryRef, // Using mainCategoryRef as turbineModelRef based on context in AuditTaskScreen
                       draftId: widget.draftId,
                     );
@@ -544,11 +611,21 @@ class TaskPageItem extends StatefulWidget {
   final Map<String, dynamic> initialAnswer;
   final void Function(String key, dynamic value, {bool shouldSetState}) onAnswerChanged;
   final VoidCallback onCapturePhoto;
+  final void Function(String photoPath) onRemovePhoto;
   final DocumentReference turbineModelRef;
   final String? draftId;
 
   const TaskPageItem({
-    required this.taskData, required this.referenceName, required this.rootCauses, required this.initialAnswer, required this.onAnswerChanged, required this.onCapturePhoto, required this.turbineModelRef, this.draftId, super.key,
+    required this.taskData,
+    required this.referenceName,
+    required this.rootCauses,
+    required this.initialAnswer,
+    required this.onAnswerChanged,
+    required this.onCapturePhoto,
+    required this.onRemovePhoto,
+    required this.turbineModelRef,
+    this.draftId,
+    super.key,
   });
 
   @override
@@ -585,6 +662,30 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     _observationController.dispose();
     _remarksController.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmAndRemovePhoto(BuildContext context, String path) async {
+    final shouldRemove = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Photo'),
+        content: const Text('Are you sure you want to remove this photo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('REMOVE', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldRemove == true) {
+      widget.onRemovePhoto(path);
+    }
   }
 
   @override
@@ -802,40 +903,75 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                   child: Row(
                     children: [
                       ...photos.map((path) => Padding(
-                        padding: const EdgeInsets.only(right: 12.0),
-                        child: GestureDetector(
-                          onTap: () => _showFullImage(context, path),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(4),
+                        padding: const EdgeInsets.only(right: 14.0, top: 6.0),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _showFullImage(context, path),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.grey.shade300),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(5),
+                                  child: kIsWeb
+                                      ? Image.network(path, width: 80, height: 80, fit: BoxFit.cover)
+                                      : Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover),
+                                ),
+                              ),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: kIsWeb
-                                  ? Image.network(path, width: 80, height: 80, fit: BoxFit.cover)
-                                  : Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover),
+                            Positioned(
+                              top: -6,
+                              right: -6,
+                              child: GestureDetector(
+                                onTap: () => _confirmAndRemovePhoto(context, path),
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade600,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.25),
+                                        blurRadius: 3,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       )),
                       if (photos.length < 3)
-                        GestureDetector(
-                          onTap: widget.onCapturePhoto,
-                          child: Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F7FA),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 1.5, style: BorderStyle.solid),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.add_a_photo_outlined, color: Color(0xFF00E5FF), size: 24),
-                                const SizedBox(height: 2),
-                                Text('Add Photo', style: TextStyle(fontSize: 9, color: Colors.grey[600], fontWeight: FontWeight.bold)),
-                              ],
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: GestureDetector(
+                            onTap: widget.onCapturePhoto,
+                            child: Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F7FA),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5), width: 1.5, style: BorderStyle.solid),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.add_a_photo_outlined, color: Color(0xFF00E5FF), size: 24),
+                                  const SizedBox(height: 2),
+                                  Text('Add Photo', style: TextStyle(fontSize: 9, color: Colors.grey[600], fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1200,8 +1336,10 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                   const SizedBox(height: 8),
                   InkWell(
                     onTap: () async {
+                       final source = await _selectPhotoSource(context);
+                       if (source == null) return;
                        final picker = ImagePicker();
-                       final image = await picker.pickImage(source: ImageSource.camera);
+                       final image = await picker.pickImage(source: source);
                        if (image != null) {
                          setDialogState(() {
                            pickedImage = image;
@@ -1209,28 +1347,59 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                          });
                        }
                     },
-                    child: Container(
-                      height: 150,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[400]!),
-                      ),
-                      alignment: Alignment.center,
-                      child: pickedImage != null
-                          ? kIsWeb 
-                              ? Image.network(pickedImage!.path, fit: BoxFit.cover) 
-                              : Image.file(File(pickedImage!.path), fit: BoxFit.cover)
-                          : currentPhotoUrl != null
-                              ? Image.network(currentPhotoUrl!, fit: BoxFit.cover)
-                              : const Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.camera_alt, color: Colors.grey, size: 40),
-                                    Text('Tap to Take Photo', style: TextStyle(color: Colors.grey)),
+                    child: Stack(
+                      children: [
+                        Container(
+                          height: 150,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[400]!),
+                          ),
+                          alignment: Alignment.center,
+                          child: pickedImage != null
+                              ? kIsWeb 
+                                  ? Image.network(pickedImage!.path, fit: BoxFit.cover) 
+                                  : Image.file(File(pickedImage!.path), fit: BoxFit.cover)
+                              : currentPhotoUrl != null
+                                  ? Image.network(currentPhotoUrl!, fit: BoxFit.cover)
+                                  : const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.camera_alt, color: Colors.grey, size: 40),
+                                        Text('Tap to Take/Import Photo', style: TextStyle(color: Colors.grey)),
+                                      ],
+                                    ),
+                        ),
+                        if (pickedImage != null || currentPhotoUrl != null)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  pickedImage = null;
+                                  currentPhotoUrl = null;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade600,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.3),
+                                      blurRadius: 3,
+                                    ),
                                   ],
                                 ),
+                                child: const Icon(Icons.close, color: Colors.white, size: 16),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

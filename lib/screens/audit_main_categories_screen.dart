@@ -59,6 +59,17 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     // This prevents data mixing between different turbines/plans
     final uniqueDraftId = '${widget.planId ?? "unplanned"}_${widget.turbineId}';
     AuditManager.instance.init(draftId: uniqueDraftId);
+    AuditManager.instance.saveDraftMetadata(
+      draftId: uniqueDraftId,
+      siteId: widget.siteId,
+      siteName: widget.siteName,
+      turbineId: widget.turbineId,
+      turbineName: widget.turbineName,
+      stateName: widget.stateName,
+      modelId: widget.turbineModelRef.id,
+      modelName: widget.planData?['turbine_model']?.toString() ?? '',
+      planId: widget.planId,
+    );
 
     // Subscribe to both category streams and merge results
     _subscribeToCategories();
@@ -600,6 +611,9 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         'plan_date_maintenance': null,
         'actual_date_maintenance': null,
         'report_metadata': <String, dynamic>{},
+        'plan_id': widget.planId,
+        'is_planned': widget.planId != null,
+        'is_unplanned': widget.planId == null,
       });
 
       uploadProgress.value = {

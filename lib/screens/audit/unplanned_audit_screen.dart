@@ -233,7 +233,9 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
     final modelName = modelDoc['turbine_model']?.toString() ?? 'Unknown Model';
 
     // Save Draft Metadata
+    final unplannedDraftId = 'unplanned_${turbineDoc['id']}';
     await AuditManager.instance.saveDraftMetadata(
+      draftId: unplannedDraftId,
       siteId: siteDoc['id'] as String,
       siteName: siteName,
       turbineId: turbineDoc['id'] as String,
@@ -241,6 +243,7 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
       stateName: stateName,
       modelId: modelDoc['id'] as String,
       modelName: modelName,
+      planId: 'unplanned',
     );
 
     if (!mounted) return;

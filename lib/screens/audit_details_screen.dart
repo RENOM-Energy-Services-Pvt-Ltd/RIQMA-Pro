@@ -402,7 +402,7 @@ class AuditDetailsScreen extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (context) => _PhotoViewerScreen(
+        builder: (context) => PhotoViewerScreen(
           photos: photos,
           initialIndex: initialIndex,
         ),
@@ -412,20 +412,21 @@ class AuditDetailsScreen extends StatelessWidget {
 }
 
 // Full-screen Photo Viewer with Zoom
-class _PhotoViewerScreen extends StatefulWidget {
+class PhotoViewerScreen extends StatefulWidget {
   final List<String> photos;
   final int initialIndex;
 
-  const _PhotoViewerScreen({
+  const PhotoViewerScreen({
     required this.photos,
     required this.initialIndex,
+    super.key,
   });
 
   @override
-  State<_PhotoViewerScreen> createState() => _PhotoViewerScreenState();
+  State<PhotoViewerScreen> createState() => _PhotoViewerScreenState();
 }
 
-class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
+class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late PageController _pageController;
   late int _currentIndex;
 
