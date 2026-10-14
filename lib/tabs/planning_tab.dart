@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import '../screens/add_planning_screen.dart';
 
 class PlanningTab extends StatefulWidget {
-  const PlanningTab({super.key});
+  final String? assignedState;
+
+  const PlanningTab({super.key, this.assignedState});
 
   @override
   State<PlanningTab> createState() => _PlanningTabState();
@@ -19,6 +21,32 @@ class _PlanningTabState extends State<PlanningTab> {
   String? _selectedSite;
   String? _selectedModel;
   DateTimeRange? _selectedDateRange;
+
+  bool get _hasRestrictedState =>
+      widget.assignedState != null &&
+      widget.assignedState!.trim().isNotEmpty &&
+      widget.assignedState!.trim().toLowerCase() != 'all';
+
+  String? get _effectiveState =>
+      _hasRestrictedState ? widget.assignedState!.trim() : _selectedState;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_hasRestrictedState) {
+      _selectedState = widget.assignedState!.trim();
+    }
+  }
+
+  @override
+  void didUpdateWidget(PlanningTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.assignedState != oldWidget.assignedState) {
+      if (_hasRestrictedState) {
+        _selectedState = widget.assignedState!.trim();
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -34,7 +62,9 @@ class _PlanningTabState extends State<PlanningTab> {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute<void>(builder: (context) => const AddPlanningScreen()),
+            MaterialPageRoute<void>(
+              builder: (context) => AddPlanningScreen(assignedState: widget.assignedState),
+            ),
           );
         },
         backgroundColor: const Color(0xFF00897B),
@@ -69,26 +99,40 @@ class _PlanningTabState extends State<PlanningTab> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('planning_data').snapshots(),
               builder: (context, snapshot) {
-                final docs = snapshot.data?.docs ?? [];
+                final allDocs = snapshot.data?.docs ?? [];
+
+                // Filter docs by assigned/selected state for dependent chips (Site, Model)
+                final stateDocs = _hasRestrictedState
+                    ? allDocs.where((d) {
+                        final s = (d.data() as Map<String, dynamic>)['state']?.toString().trim().toLowerCase() ?? '';
+                        return s == widget.assignedState!.trim().toLowerCase();
+                      }).toList()
+                    : (_selectedState != null
+                        ? allDocs.where((d) {
+                            final s = (d.data() as Map<String, dynamic>)['state']?.toString().trim().toLowerCase() ?? '';
+                            return s == _selectedState!.trim().toLowerCase();
+                          }).toList()
+                        : allDocs);
                 
                 return Row(
                   children: [
                     _buildFilterButton(
                       'State', 
-                      _selectedState, 
-                      () => _showFilterDialog('State', docs, 'state', (val) => setState(() => _selectedState = val))
+                      _effectiveState, 
+                      () => _showStateFilterDialog(allDocs),
+                      isLocked: _hasRestrictedState,
                     ),
                     const SizedBox(width: 8),
                     _buildFilterButton(
                       'Site', 
                       _selectedSite, 
-                      () => _showFilterDialog('Site', docs, 'site_name', (val) => setState(() => _selectedSite = val))
+                      () => _showFilterDialog('Site', stateDocs, 'site_name', (val) => setState(() => _selectedSite = val))
                     ),
                     const SizedBox(width: 8),
                     _buildFilterButton(
                       'WTG Model', 
                       _selectedModel, 
-                      () => _showFilterDialog('WTG Model', docs, 'turbine_model', (val) => setState(() => _selectedModel = val))
+                      () => _showFilterDialog('WTG Model', stateDocs, 'turbine_model', (val) => setState(() => _selectedModel = val))
                     ),
                     const SizedBox(width: 8),
                     _buildDateFilterButton(),
@@ -132,7 +176,10 @@ class _PlanningTabState extends State<PlanningTab> {
                                         state.contains(searchLower);
                    
                    // 2. Chip Filters
-                   final matchesState = _selectedState == null || data['state'] == _selectedState;
+                   final effectiveState = _effectiveState?.trim().toLowerCase();
+                   final docState = (data['state'] ?? '').toString().trim().toLowerCase();
+                   final matchesState = effectiveState == null || docState == effectiveState;
+
                    final matchesSite = _selectedSite == null || data['site_name'] == _selectedSite;
                    final matchesModel = _selectedModel == null || data['turbine_model'] == _selectedModel;
                    
@@ -166,7 +213,7 @@ class _PlanningTabState extends State<PlanningTab> {
     );
   }
 
-  Widget _buildFilterButton(String label, String? selectedValue, VoidCallback onTap) {
+  Widget _buildFilterButton(String label, String? selectedValue, VoidCallback onTap, {bool isLocked = false}) {
     final isSelected = selectedValue != null;
     return GestureDetector(
       onTap: onTap,
@@ -190,7 +237,8 @@ class _PlanningTabState extends State<PlanningTab> {
             ),
             const SizedBox(width: 4),
             Icon(
-              Icons.arrow_drop_down, 
+              isLocked ? Icons.lock_outline : Icons.arrow_drop_down, 
+              size: isLocked ? 14 : 20,
               color: isSelected ? const Color(0xFF00897B) : Colors.grey
             ),
           ],
@@ -262,16 +310,46 @@ class _PlanningTabState extends State<PlanningTab> {
       setState(() {
         _selectedDateRange = picked;
       });
-    } else if (_selectedDateRange != null) {
-      // Allow clearing date filter if opened and cancelled? 
-      // Or maybe add a clear button in the picker?
-      // For now, let's add a way to clear in the dialog logic or just keep it simple.
-      // To clear, user can tap the active filter and we can show a dialog or just toggle.
-      // Let's keep it simple: if they cancel, do nothing. 
-      // To clear, we might need a "Clear" button in the UI or logic.
-      // Let's add a long press to clear or just tap again to clear?
-      // For better UX, let's show a bottom sheet for date options including "Clear".
     }
+  }
+
+  void _showStateFilterDialog(List<QueryDocumentSnapshot> allDocs) {
+    if (_hasRestrictedState) {
+      showModalBottomSheet<void>(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Select State',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.lock, color: Color(0xFF00897B)),
+                  title: Text(
+                    widget.assignedState!,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  subtitle: const Text('State locked to your assigned region'),
+                  trailing: const Icon(Icons.check_circle, color: Color(0xFF00897B)),
+                  onTap: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    _showFilterDialog('State', allDocs, 'state', (val) => setState(() => _selectedState = val));
   }
 
   void _showFilterDialog(String title, List<QueryDocumentSnapshot> docs, String field, void Function(String?) onSelect) {
@@ -311,19 +389,21 @@ class _PlanningTabState extends State<PlanningTab> {
               ),
               const Divider(),
               Expanded(
-                child: ListView.builder(
-                  itemCount: sortedValues.length,
-                  itemBuilder: (context, index) {
-                    final value = sortedValues[index];
-                    return ListTile(
-                      title: Text(value),
-                      onTap: () {
-                        onSelect(value);
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
-                ),
+                child: sortedValues.isEmpty
+                    ? Center(child: Text('No ${title.toLowerCase()} options available'))
+                    : ListView.builder(
+                        itemCount: sortedValues.length,
+                        itemBuilder: (context, index) {
+                          final value = sortedValues[index];
+                          return ListTile(
+                            title: Text(value),
+                            onTap: () {
+                              onSelect(value);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
               ),
             ],
           ),

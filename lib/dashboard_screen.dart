@@ -8,8 +8,11 @@ import 'screens/activity_log_screen.dart';
 import 'screens/reports/auditor_reports_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/activity_log_service.dart';
+import 'services/app_update_service.dart';
 import 'services/audit_manager.dart';
+import 'services/renom_auth_service.dart';
 import 'services/sync_service.dart';
+import 'widgets/update_dialog.dart';
 import 'tabs/audit_tab.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/planning_tab.dart';
@@ -36,9 +39,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // This prevents cross-contamination between audits
     AuditManager.instance.clearSession();
     _loadUserName();
+    _checkForStartupUpdate();
+  }
+
+  Future<void> _checkForStartupUpdate() async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    try {
+      final info = await AppUpdateService.instance.checkForUpdate();
+      if (mounted && info != null && info.hasUpdate && info.apkUrl.isNotEmpty) {
+        await UpdateDialog.show(context, info);
+      }
+    } catch (e) {
+      debugPrint('Dashboard: Startup update check error: $e');
+    }
   }
 
   Future<void> _loadUserName() async {
+    final renomUser = RenomAuthService.instance.currentUser;
+    if (renomUser != null) {
+      String? assignedState;
+      if (renomUser.assignedState.isNotEmpty &&
+          renomUser.assignedState.toLowerCase() != 'all') {
+        assignedState = renomUser.assignedState;
+      }
+
+      // Check Firestore users collection to see if user has a specific assigned_state
+      try {
+        QuerySnapshot userSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: renomUser.email)
+            .limit(1)
+            .get();
+        if (userSnap.docs.isEmpty && renomUser.username.isNotEmpty) {
+          userSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('username', isEqualTo: renomUser.username)
+              .limit(1)
+              .get();
+        }
+        if (userSnap.docs.isNotEmpty) {
+          final fData = userSnap.docs.first.data() as Map<String, dynamic>;
+          final fState = fData['assigned_state']?.toString().trim();
+          if (fState != null && fState.isNotEmpty && fState.toLowerCase() != 'all') {
+            assignedState = fState;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error checking firestore for user state: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _userRole = renomUser.role;
+          _assignedState = assignedState;
+          _userName = renomUser.name;
+          _isLoading = false;
+        });
+      }
+      SyncService.instance.startSync();
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
@@ -112,17 +174,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         actionType: 'LOGOUT',
         description: 'User ${_userName ?? 'Unknown'} logged out',
       );
-      await FirebaseAuth.instance.signOut();
-      // Navigation is handled by StreamBuilder in main.dart
+      await RenomAuthService.instance.logout();
+      // Navigation is handled by ValueListenableBuilder in main.dart
     }
   }
 
   String _getDisplayName() {
-    final user = FirebaseAuth.instance.currentUser;
-    
+    final renomUser = RenomAuthService.instance.currentUser;
+    if (renomUser != null && renomUser.name.isNotEmpty) {
+      return renomUser.name;
+    }
     if (_userName != null && _userName!.isNotEmpty) {
       return _userName!;
     }
+    final user = FirebaseAuth.instance.currentUser;
     if (user?.displayName != null && user!.displayName!.isNotEmpty) {
       return user.displayName!;
     }
@@ -253,7 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 2:
         return AuditorReportsScreen(isManager: _userRole == 'manager');
       case 3:
-        return const PlanningTab();
+        return PlanningTab(assignedState: _assignedState);
       default:
         return const Center(child: Text('Coming Soon'));
     }

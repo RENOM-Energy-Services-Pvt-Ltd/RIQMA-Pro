@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../providers/app_settings_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/app_update_service.dart';
 import '../services/audit_manager.dart';
+import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -46,6 +48,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) => const _PendingChecklistsDialog(),
     );
+  }
+
+  bool _isCheckingUpdate = false;
+
+  Future<void> _checkForUpdate() async {
+    if (_isCheckingUpdate) return;
+    setState(() => _isCheckingUpdate = true);
+    try {
+      final info = await AppUpdateService.instance.checkForUpdate();
+      if (!mounted) return;
+
+      if (info != null && info.hasUpdate && info.apkUrl.isNotEmpty) {
+        await UpdateDialog.show(context, info);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('App is up to date ($_appVersion)'),
+            backgroundColor: const Color(0xFF00897B),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to check for updates: $e'),
+            backgroundColor: Colors.red[800],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingUpdate = false);
+      }
+    }
   }
 
   @override
@@ -130,6 +168,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(color: Colors.grey),
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.system_update_rounded, color: Color(0xFF00897B)),
+            title: const Text('Check for Updates'),
+            subtitle: const Text('Find and install latest version directly'),
+            trailing: _isCheckingUpdate
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isCheckingUpdate ? null : _checkForUpdate,
+          ),
         ],
       ),
     );
@@ -202,11 +253,11 @@ class _PendingChecklistsDialogState extends State<_PendingChecklistsDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('• ${draft.totalTasksAnswered} answered tasks will be lost', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                  Text('. ${draft.totalTasksAnswered} answered tasks will be lost', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                   if (draft.photoCount > 0)
-                    Text('• ${draft.photoCount} locally stored photos will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                    Text('. ${draft.photoCount} locally stored photos will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                   if (draft.observationCount > 0)
-                    Text('• ${draft.observationCount} recorded observations will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                    Text('. ${draft.observationCount} recorded observations will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                 ],
               ),
             ),
@@ -521,7 +572,7 @@ class _PendingChecklistsDialogState extends State<_PendingChecklistsDialog> {
                                                 const SizedBox(width: 4),
                                                 Expanded(
                                                   child: Text(
-                                                    '${draft.siteName}${draft.stateName.isNotEmpty ? ' • ${draft.stateName}' : ''}',
+                                                    '${draft.siteName}${draft.stateName.isNotEmpty ? ' . ${draft.stateName}' : ''}',
                                                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,

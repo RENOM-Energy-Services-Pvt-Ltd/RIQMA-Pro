@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/activity_log_service.dart';
+import '../services/renom_auth_service.dart';
 import '../widgets/searchable_dropdown.dart';
 
 class AddPlanningScreen extends StatefulWidget {
-  const AddPlanningScreen({super.key});
+  final String? assignedState;
+
+  const AddPlanningScreen({super.key, this.assignedState});
 
   @override
   State<AddPlanningScreen> createState() => _AddPlanningScreenState();
@@ -37,54 +40,61 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
   }
 
   Future<void> _fetchUserProfile() async {
+    final renomUser = RenomAuthService.instance.currentUser;
+    String? assignedStateName = (widget.assignedState != null &&
+            widget.assignedState!.trim().isNotEmpty &&
+            widget.assignedState!.trim().toLowerCase() != 'all')
+        ? widget.assignedState!.trim()
+        : (renomUser != null &&
+                renomUser.assignedState.isNotEmpty &&
+                renomUser.assignedState.toLowerCase() != 'all')
+            ? renomUser.assignedState.trim()
+            : null;
+
+    String? assignedStateId;
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
         final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
-          
-          final assignedStateName = data['assigned_state']?.toString();
-          var assignedStateId = data['assigned_state_id']?.toString();
-          final role = data['role']?.toString() ?? 'auditor'; // Default to auditor for safety
-          final isAuditor = (role == 'auditor');
-
-          if (!isAuditor) {
-            // Managers/Admins are not locked
-            setState(() => _isStateLocked = false);
-            return;
+          final fState = data['assigned_state']?.toString().trim();
+          if (fState != null && fState.isNotEmpty && fState.toLowerCase() != 'all') {
+            assignedStateName ??= fState;
           }
-
-          if (assignedStateName != null && assignedStateName.isNotEmpty) {
-            // If ID is missing, attempt to recover it by name
-            if (assignedStateId == null || assignedStateId.isEmpty) {
-              final stateQuery = await FirebaseFirestore.instance
-                  .collection('states')
-                  .where('state', isEqualTo: assignedStateName)
-                  .limit(1)
-                  .get();
-
-              if (stateQuery.docs.isNotEmpty) {
-                assignedStateId = stateQuery.docs.first.id;
-              }
-            }
-
-            if (mounted && assignedStateId != null) {
-              setState(() {
-                _selectedStateId = assignedStateId;
-                _selectedStateName = assignedStateName;
-                _isStateLocked = true;
-              });
-            } else if (mounted) {
-               // If we found a name but still no ID, we can't lock properly because site lookup will fail
-               ScaffoldMessenger.of(context).showSnackBar(
-                 const SnackBar(content: Text('Warning: Assigned state ID not found. Sites may not load.')),
-               );
-            }
+          final fId = data['assigned_state_id']?.toString().trim();
+          if (fId != null && fId.isNotEmpty) {
+            assignedStateId = fId;
           }
         }
       } catch (e) {
-        debugPrint('Error fetching user profile: $e');
+        debugPrint('Error fetching user profile in AddPlanningScreen: $e');
+      }
+    }
+
+    if (assignedStateName != null && assignedStateName.isNotEmpty) {
+      if (assignedStateId == null || assignedStateId.isEmpty) {
+        try {
+          final stateQuery = await FirebaseFirestore.instance
+              .collection('states')
+              .where('state', isEqualTo: assignedStateName)
+              .limit(1)
+              .get();
+          if (stateQuery.docs.isNotEmpty) {
+            assignedStateId = stateQuery.docs.first.id;
+          }
+        } catch (e) {
+          debugPrint('Error recovering state ID: $e');
+        }
+      }
+
+      if (mounted && assignedStateId != null) {
+        setState(() {
+          _selectedStateId = assignedStateId;
+          _selectedStateName = assignedStateName;
+          _isStateLocked = true;
+        });
       }
     }
   }
@@ -138,8 +148,16 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
 
     try {
       // Name Logic
+      final renomUser = RenomAuthService.instance.currentUser;
       var actualName = 'Auditor';
-      if (user.email == '2164@renom.com') {
+      String auditorId = user.uid;
+
+      if (renomUser != null && renomUser.name.isNotEmpty) {
+        actualName = renomUser.name;
+        if (renomUser.docId.isNotEmpty) {
+          auditorId = renomUser.docId;
+        }
+      } else if (user.email == '2164@renom.com') {
         actualName = 'Ankit Kumawat';
       } else if (user.displayName != null && user.displayName!.isNotEmpty) {
         actualName = user.displayName!;
@@ -150,7 +168,7 @@ class _AddPlanningScreenState extends State<AddPlanningScreen> {
       // Strict Schema Submission
       await FirebaseFirestore.instance.collection('planning_data').add({
         // 1. Auditor Details
-        'auditor_id': user.uid,
+        'auditor_id': auditorId,
         'auditor_name': actualName,
         'auditors': [actualName],
 
