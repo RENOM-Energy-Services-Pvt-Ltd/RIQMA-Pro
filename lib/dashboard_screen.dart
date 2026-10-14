@@ -272,7 +272,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
           child: FlipkartBottomNavBar(
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,

@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,17 +15,16 @@ class FlipkartNavItem {
   });
 }
 
-/// A Flipkart-inspired floating bottom navigation bar with a horizontally
-/// draggable, animated indicator pill.
+/// An iOS-inspired floating frosted glass bottom navigation bar with an
+/// intelligent, horizontally draggable animated indicator capsule and an iPhone
+/// Home Indicator bar.
 ///
 /// Features:
-/// - Floating capsule/pill shape with soft elevation and crisp border.
-/// - The grey active indicator pill can be dragged horizontally across tabs.
-/// - While dragging, the indicator follows finger movement smoothly in real time.
-/// - Upon release (drop), it smoothly snaps to the nearest tab with ease-out cubic animation
-///   and activates that tab with haptic feedback.
-/// - Tapping any tab directly glides the indicator smoothly to that tab.
-/// - Fluid color and scale transitions for icons and text based on indicator proximity.
+/// - Real Frosted Glassmorphism with BackdropFilter blur and specular border.
+/// - Adaptive indicator pill that dynamically sizes to fit all label lengths without clipping.
+/// - FittedBox text scaling to guarantee text never overflows the glass capsule.
+/// - Draggable with spring physics & haptic feedback across tabs.
+/// - Authentic iPhone Home Indicator horizontal line centered at the bottom.
 class FlipkartBottomNavBar extends StatefulWidget {
   final List<FlipkartNavItem> items;
   final int currentIndex;
@@ -35,6 +34,7 @@ class FlipkartBottomNavBar extends StatefulWidget {
   final Color? indicatorColor;
   final Color? backgroundColor;
   final double height;
+  final bool showHomeIndicator;
 
   const FlipkartBottomNavBar({
     required this.items,
@@ -45,7 +45,8 @@ class FlipkartBottomNavBar extends StatefulWidget {
     this.inactiveColor,
     this.indicatorColor,
     this.backgroundColor,
-    this.height = 66.0,
+    this.height = 64.0,
+    this.showHomeIndicator = true,
   }) : assert(items.length >= 2, 'FlipkartBottomNavBar requires at least 2 items');
 
   @override
@@ -70,7 +71,7 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 300),
     );
 
     _animation = CurvedAnimation(
@@ -119,7 +120,6 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
 
   void _updateProgressFromDx(double dx, double totalWidth) {
     final tabWidth = totalWidth / widget.items.length;
-    // Position indicator centered at touch point
     final progress = (dx - (tabWidth / 2)) / tabWidth;
     final clamped = progress.clamp(0.0, (widget.items.length - 1).toDouble());
 
@@ -152,7 +152,7 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
     });
 
     final velocity = details.primaryVelocity ?? 0.0;
-    final velocityBonus = (velocity / 1000.0).clamp(-0.8, 0.8);
+    final velocityBonus = (velocity / 1200.0).clamp(-0.8, 0.8);
     final projected = _currentProgress + velocityBonus;
     final targetIndex = projected.round().clamp(0, widget.items.length - 1);
 
@@ -191,161 +191,199 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
     final bgColor = widget.backgroundColor ??
         (isDark ? const Color(0xFF1E2126) : Colors.white);
 
-    final activeColor = widget.activeColor ??
-        (isDark ? const Color(0xFF4C93FF) : const Color(0xFF0D53FC));
+    // Renom Teal default active color
+    final activeColor = widget.activeColor ?? const Color(0xFF00897B);
 
     final inactiveColor = widget.inactiveColor ??
-        (isDark ? const Color(0xFF8E95A2) : const Color(0xFF555B66));
+        (isDark ? const Color(0xFF9EA3AE) : const Color(0xFF6B7280));
 
     final indicatorColor = widget.indicatorColor ??
-        (isDark ? const Color(0xFF2C323D) : const Color(0xFFE8ECEF));
+        (isDark
+            ? const Color(0xFF00897B).withValues(alpha: 0.28)
+            : const Color(0xFF00897B).withValues(alpha: 0.12));
 
-    final borderColor = isDark
-        ? const Color(0x14FFFFFF)
-        : const Color(0x12000000);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 1. Frosted Glass Floating Dock
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final totalWidth = constraints.maxWidth;
+            final count = widget.items.length;
+            final tabWidth = totalWidth / count;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final totalWidth = constraints.maxWidth;
-        final count = widget.items.length;
-        final tabWidth = totalWidth / count;
+            // Spatially optimized capsule: leaves 5px on each side of the tab
+            const indicatorPaddingH = 5.0;
+            final indicatorWidth = tabWidth - (indicatorPaddingH * 2);
+            final indicatorHeight = widget.height - 10.0;
 
-        // The grey indicator capsule width & height
-        final indicatorPaddingH = math.max(4.0, (tabWidth - 68.0) / 2);
-        final indicatorWidth = tabWidth - (indicatorPaddingH * 2);
-        final indicatorHeight = widget.height - 12.0;
+            // Horizontal position of the sliding indicator
+            final indicatorLeft =
+                (_currentProgress * tabWidth) + indicatorPaddingH;
 
-        // Horizontal position of the sliding grey indicator
-        final indicatorLeft =
-            (_currentProgress * tabWidth) + indicatorPaddingH;
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (d) => _onHorizontalDragStart(d, totalWidth),
-          onHorizontalDragUpdate: (d) => _onHorizontalDragUpdate(d, totalWidth),
-          onHorizontalDragEnd: (d) => _onHorizontalDragEnd(d, totalWidth),
-          onHorizontalDragCancel: _onHorizontalDragCancel,
-          onTapUp: (d) => _onTapUp(d, totalWidth),
-          child: Container(
-            height: widget.height,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(widget.height / 2),
-              border: Border.all(color: borderColor, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: isDark
-                      ? const Color(0x59000000)
-                      : const Color(0x140B192C),
-                  blurRadius: 18,
-                  offset: const Offset(0, 5),
-                  spreadRadius: 0,
-                ),
-                BoxShadow(
-                  color: isDark
-                      ? const Color(0x33000000)
-                      : const Color(0x080B192C),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                // 1. Draggable & Animated Grey Indicator Capsule ("Grey wala circle")
-                Positioned(
-                  left: indicatorLeft,
-                  top: (widget.height - indicatorHeight) / 2,
-                  width: indicatorWidth,
-                  height: indicatorHeight,
-                  child: AnimatedScale(
-                    scale: _isDragging ? 1.04 : 1.0,
-                    duration: const Duration(milliseconds: 120),
-                    curve: Curves.easeOut,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: indicatorColor,
-                        borderRadius: BorderRadius.circular(indicatorHeight / 2),
-                        boxShadow: _isDragging
-                            ? [
-                                BoxShadow(
-                                  color: (isDark
-                                          ? const Color(0x4D000000)
-                                          : const Color(0x2E0D53FC)),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
-                                  offset: const Offset(0, 2),
-                                )
-                              ]
-                            : null,
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (d) => _onHorizontalDragStart(d, totalWidth),
+              onHorizontalDragUpdate: (d) => _onHorizontalDragUpdate(d, totalWidth),
+              onHorizontalDragEnd: (d) => _onHorizontalDragEnd(d, totalWidth),
+              onHorizontalDragCancel: _onHorizontalDragCancel,
+              onTapUp: (d) => _onTapUp(d, totalWidth),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(widget.height / 2),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                  child: Container(
+                    height: widget.height,
+                    decoration: BoxDecoration(
+                      color: bgColor.withValues(alpha: isDark ? 0.82 : 0.88),
+                      borderRadius: BorderRadius.circular(widget.height / 2),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.8),
+                        width: 1.2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark
+                              ? const Color(0x66000000)
+                              : const Color(0x18000000),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                          spreadRadius: 0,
+                        ),
+                        BoxShadow(
+                          color: isDark
+                              ? const Color(0x33000000)
+                              : const Color(0x0A000000),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        // Sliding Smart Glass Capsule
+                        Positioned(
+                          left: indicatorLeft,
+                          top: (widget.height - indicatorHeight) / 2,
+                          width: indicatorWidth,
+                          height: indicatorHeight,
+                          child: AnimatedScale(
+                            scale: _isDragging ? 1.04 : 1.0,
+                            duration: const Duration(milliseconds: 120),
+                            curve: Curves.easeOut,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: indicatorColor,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFF00897B).withValues(alpha: 0.35)
+                                      : const Color(0xFF00897B).withValues(alpha: 0.22),
+                                  width: 1.0,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF00897B).withValues(
+                                      alpha: _isDragging ? 0.25 : 0.10,
+                                    ),
+                                    blurRadius: _isDragging ? 12 : 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Tab Items Layer
+                        Row(
+                          children: List.generate(count, (index) {
+                            final item = widget.items[index];
+                            final distance = (_currentProgress - index).abs();
+                            final proximity = (1.0 - distance).clamp(0.0, 1.0);
+
+                            final itemColor = Color.lerp(
+                              inactiveColor,
+                              activeColor,
+                              proximity,
+                            )!;
+
+                            final scale = 1.0 + (0.05 * proximity);
+                            final isSelected = index == widget.currentIndex;
+
+                            return Expanded(
+                              child: Transform.scale(
+                                scale: scale,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        (proximity > 0.6 && item.activeIcon != null)
+                                            ? item.activeIcon
+                                            : item.icon,
+                                        size: 22,
+                                        color: itemColor,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                          child: Text(
+                                            item.label,
+                                            maxLines: 1,
+                                            softWrap: false,
+                                            style: TextStyle(
+                                              fontSize: 11.0,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              color: itemColor,
+                                              letterSpacing: -0.2,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
                     ),
                   ),
                 ),
+              ),
+            );
+          },
+        ),
 
-                // 2. Tab Items Layer
-                Row(
-                  children: List.generate(count, (index) {
-                    final item = widget.items[index];
-
-                    // Proximity of indicator to this tab [0.0 = far, 1.0 = exactly over]
-                    final distance = (_currentProgress - index).abs();
-                    final proximity = (1.0 - distance).clamp(0.0, 1.0);
-
-                    // Interpolated color between inactive and active
-                    final itemColor = Color.lerp(
-                      inactiveColor,
-                      activeColor,
-                      proximity,
-                    )!;
-
-                    // Subtle scale bounce when indicator is centered
-                    final scale = 1.0 + (0.07 * proximity);
-
-                    final isSelected = index == widget.currentIndex;
-
-                    return Expanded(
-                      child: Center(
-                        child: Transform.scale(
-                          scale: scale,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                (proximity > 0.6 && item.activeIcon != null)
-                                    ? item.activeIcon
-                                    : item.icon,
-                                size: 23,
-                                color: itemColor,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                item.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  color: itemColor,
-                                  letterSpacing: -0.1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ],
+        // 2. iPhone Home Indicator Bar (Centered at Bottom)
+        if (widget.showHomeIndicator) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: Container(
+              width: 136,
+              height: 4.5,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.35)
+                    : Colors.black.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(100),
+              ),
             ),
           ),
-        );
-      },
+          const SizedBox(height: 2),
+        ],
+      ],
     );
   }
 }

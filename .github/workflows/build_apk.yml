@@ -49,13 +49,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.1
-          name: RIQMA Pro v1.0.1
+          tag_name: v1.0.2
+          name: RIQMA Pro v1.0.2
           body: |
-            ### RIQMA Pro v1.0.1 Update
+            ### RIQMA Pro v1.0.2 Update
+            - iPhone-Style Frosted Glassmorphism Bottom Navigation Bar
+            - Fitted Tab Labels (No text overflow)
+            - Centered iOS Home Indicator Bar
             - In-App 1-Click Direct Update System
             - State & Regional Planning Restrictions
-            - Flipkart Animated Bottom Navigation Bar
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false
           prerelease: false
