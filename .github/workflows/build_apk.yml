@@ -45,21 +45,30 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Extract version from pubspec.yaml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | head -1 | awk '{print $2}' | cut -d '+' -f 1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.2
-          name: RIQMA Pro v1.0.2
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: RIQMA Pro ${{ steps.get_version.outputs.tag }}
           body: |
-            ### RIQMA Pro v1.0.2 Update
+            ### RIQMA Pro ${{ steps.get_version.outputs.tag }} Update
+            - In-App 1-Click Direct Update with System Package Installer
+            - Pre-install Unknown App Sources Permission Check & Auto-Redirect to Settings
+            - Auto-resume update on returning from settings without re-downloading APK
             - iPhone-Style Frosted Glassmorphism Bottom Navigation Bar
-            - Fitted Tab Labels (No text overflow)
-            - Centered iOS Home Indicator Bar
-            - In-App 1-Click Direct Update System
+            - Fitted Tab Labels (No text overflow) & Centered iOS Home Indicator Bar
             - State & Regional Planning Restrictions
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

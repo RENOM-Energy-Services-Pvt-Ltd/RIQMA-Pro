@@ -2,10 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+
+class PermissionDeniedException implements Exception {
+  final String message;
+  const PermissionDeniedException(this.message);
+
+  @override
+  String toString() => message;
+}
 
 class AppUpdateInfo {
   final String latestVersion;
@@ -33,14 +42,81 @@ class AppUpdateService {
   static final AppUpdateService instance = AppUpdateService._internal();
   AppUpdateService._internal();
 
+  static const MethodChannel _installerChannel =
+      MethodChannel('com.example.riqma_pro/app_installer');
+
   static const String _githubLatestReleaseApi =
       'https://api.github.com/repos/RENOM-Energy-Services-Pvt-Ltd/RIQMA-Pro/releases/latest';
+
+  /// Check whether the app has permission to install unknown apps
+  Future<bool> canRequestPackageInstalls() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final bool? canInstall =
+          await _installerChannel.invokeMethod<bool>('canRequestPackageInstalls');
+      return canInstall ?? true;
+    } catch (e) {
+      debugPrint('AppUpdateService: Error checking install permission: $e');
+      return true;
+    }
+  }
+
+  /// Open Android System Settings for "Allow from this source"
+  Future<bool> openInstallPermissionSettings() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final bool? opened =
+          await _installerChannel.invokeMethod<bool>('openInstallPermissionSettings');
+      return opened ?? false;
+    } catch (e) {
+      debugPrint('AppUpdateService: Error opening install settings: $e');
+      return false;
+    }
+  }
+
+  /// Get the cached downloaded APK file
+  Future<File> getDownloadedApkFile() async {
+    final tempDir = await getTemporaryDirectory();
+    return File('${tempDir.path}/riqma_update.apk');
+  }
+
+  /// Check if the APK has already been downloaded to cache
+  Future<bool> hasDownloadedApk() async {
+    final file = await getDownloadedApkFile();
+    return await file.exists();
+  }
+
+  /// Installs an already-downloaded APK after verifying permissions
+  Future<void> installDownloadedApk() async {
+    final file = await getDownloadedApkFile();
+    if (!await file.exists()) {
+      throw Exception('Downloaded update file not found.');
+    }
+
+    // 1. Verify Permission
+    final hasPermission = await canRequestPackageInstalls();
+    if (!hasPermission) {
+      throw const PermissionDeniedException(
+        'Permission denied: android.permission.REQUEST_INSTALL_PACKAGES',
+      );
+    }
+
+    // 2. Launch Installer
+    final result = await OpenFile.open(
+      file.path,
+      type: 'application/vnd.android.package-archive',
+    );
+
+    if (result.type != ResultType.done) {
+      throw Exception('Failed to open installer: ${result.message}');
+    }
+  }
 
   /// Check whether an update is available (from Firestore with GitHub fallback)
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version; // e.g. "1.0.0"
+      final currentVersion = packageInfo.version; // e.g. "1.0.1"
       final currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
 
       // 1. Try Firestore app_config/version first
@@ -159,6 +235,9 @@ class AppUpdateService {
     required void Function(double progress, int receivedBytes, int totalBytes) onProgress,
   }) async {
     final client = http.Client();
+    final tempDir = await getTemporaryDirectory();
+    final apkFile = File('${tempDir.path}/riqma_update.apk');
+
     try {
       final request = http.Request('GET', Uri.parse(apkUrl));
       final response = await client.send(request);
@@ -169,9 +248,6 @@ class AppUpdateService {
 
       final totalBytes = response.contentLength ?? 0;
       var receivedBytes = 0;
-
-      final tempDir = await getTemporaryDirectory();
-      final apkFile = File('${tempDir.path}/riqma_update.apk');
 
       if (await apkFile.exists()) {
         await apkFile.delete();
@@ -190,18 +266,26 @@ class AppUpdateService {
 
       await sink.flush();
       await sink.close();
-
-      // Launch the Android System Package Installer
-      final result = await OpenFile.open(
-        apkFile.path,
-        type: 'application/vnd.android.package-archive',
-      );
-
-      if (result.type != ResultType.done) {
-        throw Exception('Failed to open installer: ${result.message}');
-      }
     } finally {
       client.close();
+    }
+
+    // Pre-Install Permission Check
+    final hasPermission = await canRequestPackageInstalls();
+    if (!hasPermission) {
+      throw const PermissionDeniedException(
+        'Permission denied: android.permission.REQUEST_INSTALL_PACKAGES',
+      );
+    }
+
+    // Launch the Android System Package Installer
+    final result = await OpenFile.open(
+      apkFile.path,
+      type: 'application/vnd.android.package-archive',
+    );
+
+    if (result.type != ResultType.done) {
+      throw Exception('Failed to open installer: ${result.message}');
     }
   }
 

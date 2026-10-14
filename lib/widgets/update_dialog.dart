@@ -22,11 +22,142 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
-class _UpdateDialogState extends State<UpdateDialog> {
+class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver {
   bool _isDownloading = false;
+  bool _isInstalling = false;
+  bool _needsPermission = false;
+  bool _hasDownloadedApk = false;
   double _progress = 0.0;
   String _downloadStatus = '';
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkInitialState();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _checkInitialState() async {
+    try {
+      final downloaded = await AppUpdateService.instance.hasDownloadedApk();
+      final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
+      if (mounted) {
+        setState(() {
+          _hasDownloadedApk = downloaded;
+          if (!canInstall && downloaded) {
+            _needsPermission = true;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissionOnResume();
+    }
+  }
+
+  Future<void> _checkPermissionOnResume() async {
+    final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
+    if (mounted) {
+      setState(() {
+        if (canInstall) {
+          _needsPermission = false;
+        }
+      });
+    }
+
+    // If permission was granted and APK is downloaded, automatically launch installer!
+    if (canInstall) {
+      final downloaded = await AppUpdateService.instance.hasDownloadedApk();
+      if (downloaded && !_isDownloading && !_isInstalling) {
+        _installDownloadedApk();
+      }
+    }
+  }
+
+  Future<void> _openSettings() async {
+    await AppUpdateService.instance.openInstallPermissionSettings();
+  }
+
+  Future<void> _installDownloadedApk() async {
+    setState(() {
+      _isInstalling = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
+      if (!canInstall) {
+        setState(() {
+          _isInstalling = false;
+          _needsPermission = true;
+        });
+        await _openSettings();
+        return;
+      }
+
+      await AppUpdateService.instance.installDownloadedApk();
+      if (mounted) {
+        setState(() {
+          _isInstalling = false;
+        });
+      }
+    } on PermissionDeniedException {
+      if (mounted) {
+        setState(() {
+          _isInstalling = false;
+          _needsPermission = true;
+        });
+        await _openSettings();
+      }
+    } catch (e) {
+      if (mounted) {
+        final err = e.toString().replaceAll('Exception: ', '');
+        if (err.contains('REQUEST_INSTALL_PACKAGES') || err.contains('Permission denied')) {
+          setState(() {
+            _isInstalling = false;
+            _needsPermission = true;
+          });
+          await _openSettings();
+        } else {
+          setState(() {
+            _isInstalling = false;
+            _errorMessage = err;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _handleAction() async {
+    // If APK is already downloaded, try to install directly
+    if (_hasDownloadedApk) {
+      await _installDownloadedApk();
+      return;
+    }
+
+    // Pre-check permission before downloading so user can enable it first if needed
+    final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
+    if (!canInstall) {
+      setState(() {
+        _needsPermission = true;
+      });
+      await _openSettings();
+      return;
+    }
+
+    await _startDownload();
+  }
 
   Future<void> _startDownload() async {
     setState(() {
@@ -53,15 +184,35 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) {
         setState(() {
           _isDownloading = false;
+          _hasDownloadedApk = true;
           _downloadStatus = 'Launching installer...';
         });
       }
-    } catch (e) {
+    } on PermissionDeniedException {
       if (mounted) {
         setState(() {
           _isDownloading = false;
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _hasDownloadedApk = true;
+          _needsPermission = true;
         });
+        await _openSettings();
+      }
+    } catch (e) {
+      if (mounted) {
+        final err = e.toString().replaceAll('Exception: ', '');
+        if (err.contains('REQUEST_INSTALL_PACKAGES') || err.contains('Permission denied')) {
+          setState(() {
+            _isDownloading = false;
+            _hasDownloadedApk = true;
+            _needsPermission = true;
+          });
+          await _openSettings();
+        } else {
+          setState(() {
+            _isDownloading = false;
+            _errorMessage = err;
+          });
+        }
       }
     }
   }
@@ -71,7 +222,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
-      canPop: !widget.updateInfo.forceUpdate && !_isDownloading,
+      canPop: !widget.updateInfo.forceUpdate && !_isDownloading && !_isInstalling,
       child: Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         elevation: 10,
@@ -188,6 +339,76 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 const SizedBox(height: 16),
               ],
 
+              // Permission Guidance Box
+              if (_needsPermission) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF332A00) : const Color(0xFFFFF9E6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF665500) : const Color(0xFFFFE082),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.security_update_good_rounded,
+                            color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFE65100),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Install Permission Required',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFE65100),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '1. Tap "Open Settings" below.\n'
+                        '2. Turn ON "Allow from this source".\n'
+                        '3. Return here to complete installation.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[300] : const Color(0xFF5D4037),
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _openSettings,
+                          icon: const Icon(Icons.settings, size: 16),
+                          label: const Text('Open Settings'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? const Color(0xFFFFD54F) : const Color(0xFFE65100),
+                            side: BorderSide(
+                              color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFE65100),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // Downloading UI or Error
               if (_isDownloading) ...[
                 Column(
@@ -236,7 +457,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               // Action Buttons
               if (!_isDownloading) ...[
                 ElevatedButton(
-                  onPressed: _startDownload,
+                  onPressed: _isInstalling ? null : _handleAction,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00897B),
                     foregroundColor: Colors.white,
@@ -244,10 +465,23 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: Text(
-                    _errorMessage != null ? 'Retry Download' : 'Update Now',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isInstalling
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          _needsPermission
+                              ? (_hasDownloadedApk ? "I've Enabled It - Install Now" : "Enable & Update")
+                              : (_hasDownloadedApk
+                                  ? 'Install Now'
+                                  : (_errorMessage != null ? 'Retry Download' : 'Update Now')),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
                 ),
                 if (!widget.updateInfo.forceUpdate) ...[
                   const SizedBox(height: 8),
