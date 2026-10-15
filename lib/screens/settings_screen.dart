@@ -253,11 +253,11 @@ class _PendingChecklistsDialogState extends State<_PendingChecklistsDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('. ${draft.totalTasksAnswered} answered tasks will be lost', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                  Text('• ${draft.totalTasksAnswered} answered tasks will be lost', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                   if (draft.photoCount > 0)
-                    Text('. ${draft.photoCount} locally stored photos will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                    Text('• ${draft.photoCount} locally stored photos will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                   if (draft.observationCount > 0)
-                    Text('. ${draft.observationCount} recorded observations will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
+                    Text('• ${draft.observationCount} recorded observations will be deleted', style: TextStyle(color: Colors.red.shade900, fontSize: 13)),
                 ],
               ),
             ),
@@ -572,7 +572,7 @@ class _PendingChecklistsDialogState extends State<_PendingChecklistsDialog> {
                                                 const SizedBox(width: 4),
                                                 Expanded(
                                                   child: Text(
-                                                    '${draft.siteName}${draft.stateName.isNotEmpty ? ' . ${draft.stateName}' : ''}',
+                                                    '${draft.siteName}${draft.stateName.isNotEmpty ? ' • ${draft.stateName}' : ''}',
                                                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,

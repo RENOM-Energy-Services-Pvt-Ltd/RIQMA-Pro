@@ -35,6 +35,11 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
   final Set<String> _allModelsDocIds = {};
   bool _isLoading = true; // Track loading state
 
+  // Cached task IDs & calculated progress stats per sub-category
+  final Map<String, List<String>> _subCategoryTaskIds = {};
+  final Map<String, Map<String, int>> _subCategoryStats = {};
+  int _statsLoadSession = 0;
+
   @override
   void initState() {
     super.initState();
@@ -84,7 +89,7 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
     }, onError: (Object e) {
       debugPrint('sub_categories is_all_models query failed: $e');
       // Ensure loading state is cleared even if this stream fails
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && _subCategories.isEmpty) setState(() => _isLoading = false);
     });
   }
 
@@ -98,12 +103,14 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
-      setState(() {
-        _subCategories
-          ..clear()
-          ..addAll(snapshot.docs);
-        _isLoading = false;
-      });
+      _subCategories
+        ..clear()
+        ..addAll(snapshot.docs);
+      if (_subCategories.isEmpty) {
+        if (mounted) setState(() => _isLoading = false);
+      } else {
+        _loadAllSubCategoryStats();
+      }
     }, onError: (Object e) {
       debugPrint('sub_categories legacy query also failed: $e');
       if (mounted) setState(() => _isLoading = false);
@@ -151,12 +158,15 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
         return (aOrder as num).compareTo(bOrder as num);
       });
 
-    setState(() {
-      _subCategories
-        ..clear()
-        ..addAll(sorted);
-      _isLoading = false; // Mark as done after first merge
-    });
+    _subCategories
+      ..clear()
+      ..addAll(sorted);
+
+    if (_subCategories.isEmpty) {
+      if (mounted) setState(() => _isLoading = false);
+    } else {
+      _loadAllSubCategoryStats();
+    }
   }
   @override
   Widget build(BuildContext context) {
@@ -229,42 +239,34 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                 final data = doc.data() as Map<String, dynamic>;
                 final categoryName = (data['name'] as String?) ?? 'Unknown';
 
-                return FutureBuilder<Map<String, int>>(
-                  future: _calculateSubCategoryProgress(doc.reference),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                      return const AuditCardSkeleton();
-                    }
-                    final stats = snapshot.data ?? {'total': 0, 'ok': 0, 'notOk': 0, 'na': 0};
-                    final total = stats['total'] ?? 0;
-                    final ok = stats['ok'] ?? 0;
-                    final notOk = stats['notOk'] ?? 0;
-                    final na = stats['na'] ?? 0;
-                    final completed = ok + notOk + na;
-                    final pending = total - completed;
+                final stats = _subCategoryStats[doc.id] ?? {'total': 0, 'ok': 0, 'notOk': 0, 'na': 0};
+                final total = stats['total'] ?? 0;
+                final ok = stats['ok'] ?? 0;
+                final notOk = stats['notOk'] ?? 0;
+                final na = stats['na'] ?? 0;
+                final completed = ok + notOk + na;
+                final pending = total - completed;
 
-                    return AuditCard(
-                      title: categoryName,
-                      total: total,
-                      ok: ok,
-                      notOk: notOk,
-                      pending: pending,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (context) => AuditTaskScreen(
-                              subCategoryName: categoryName,
-                              subCategoryRef: doc.reference,
-                              mainCategoryName: widget.parentCategoryName,
-                              mainCategoryRef: widget.mainCategoryRef,
-                              turbineId: widget.turbineId,
-                              draftId: widget.draftId,
-                            ),
-                          ),
-                        ).then((_) => setState(() {}));
-                      },
-                    );
+                return AuditCard(
+                  title: categoryName,
+                  total: total,
+                  ok: ok,
+                  notOk: notOk,
+                  pending: pending,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (context) => AuditTaskScreen(
+                          subCategoryName: categoryName,
+                          subCategoryRef: doc.reference,
+                          mainCategoryName: widget.parentCategoryName,
+                          mainCategoryRef: widget.mainCategoryRef,
+                          turbineId: widget.turbineId,
+                          draftId: widget.draftId,
+                        ),
+                      ),
+                    ).then((_) => _recalculateStatsFromLocal());
                   },
                 );
               },
@@ -272,26 +274,50 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
     );
   }
 
-
-  Future<Map<String, int>> _calculateSubCategoryProgress(DocumentReference subCategoryRef) async {
-    // Initialize with draftId to ensure correct storage context
+  /// Concurrently loads tasks for all sub-categories so all cards appear at once.
+  Future<void> _loadAllSubCategoryStats() async {
+    final sessionId = ++_statsLoadSession;
     if (widget.draftId != null) {
       await AuditManager.instance.init(draftId: widget.draftId);
     }
     final allAnswers = AuditManager.instance.getAllAnswers();
 
-    final tasksSnapshot = await FirebaseFirestore.instance
-        .collection('tasks')
-        .where('sub_categories_ref', isEqualTo: subCategoryRef)
-        .get();
+    try {
+      final taskSnapshots = await Future.wait(
+        _subCategories.map((doc) => FirebaseFirestore.instance
+            .collection('tasks')
+            .where('sub_categories_ref', isEqualTo: doc.reference)
+            .get()),
+      );
 
-    final total = tasksSnapshot.docs.length;
+      if (!mounted || sessionId != _statsLoadSession) return;
+
+      final newStats = <String, Map<String, int>>{};
+      for (var i = 0; i < _subCategories.length; i++) {
+        final subCatId = _subCategories[i].id;
+        final taskIds = taskSnapshots[i].docs.map((d) => d.id).toList();
+        _subCategoryTaskIds[subCatId] = taskIds;
+        newStats[subCatId] = _computeStatsFromTaskIds(taskIds, allAnswers);
+      }
+
+      setState(() {
+        _subCategoryStats.addAll(newStats);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading sub-category stats: $e');
+      if (mounted && sessionId == _statsLoadSession) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Map<String, int> _computeStatsFromTaskIds(List<String> taskIds, Map<String, dynamic> allAnswers) {
     var okCount = 0;
     var notOkCount = 0;
     var naCount = 0;
 
-    for (var taskDoc in tasksSnapshot.docs) {
-      final taskId = taskDoc.id;
+    for (final taskId in taskIds) {
       if (allAnswers.containsKey(taskId)) {
         final answerData = allAnswers[taskId] as Map<String, dynamic>?;
         final status = answerData?['status'];
@@ -305,6 +331,15 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
       }
     }
 
-    return {'total': total, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
+    return {'total': taskIds.length, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
+  }
+
+  void _recalculateStatsFromLocal() {
+    final allAnswers = AuditManager.instance.getAllAnswers();
+    setState(() {
+      for (final entry in _subCategoryTaskIds.entries) {
+        _subCategoryStats[entry.key] = _computeStatsFromTaskIds(entry.value, allAnswers);
+      }
+    });
   }
 }

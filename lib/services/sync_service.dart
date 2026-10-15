@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'renom_master_data_service.dart';
 
 /// Service responsible for proactive deep offline syncing of audit data.
 /// It ensures that all checklists, tasks, and master data for approved plans
@@ -53,8 +54,11 @@ class SyncService extends ChangeNotifier {
       _statusMessage = 'Syncing master data...';
       notifyListeners();
 
-      // 1. Sync Master Data (needed for the selection wizard)
+      // 1. Sync Renom Server Master Data (with local cache) & Firestore
       await Future.wait([
+        RenomMasterDataService.instance.getStates(forceRefresh: true),
+        RenomMasterDataService.instance.getSites(forceRefresh: true),
+        RenomMasterDataService.instance.getTurbinesAndModels(forceRefresh: true),
         FirebaseFirestore.instance.collection('states').get(),
         FirebaseFirestore.instance.collection('sites').get(),
         FirebaseFirestore.instance.collection('turbinemodel').get(),

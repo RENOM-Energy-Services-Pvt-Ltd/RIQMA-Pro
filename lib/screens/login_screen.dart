@@ -1,8 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/activity_log_service.dart';
+import '../services/renom_auth_service.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -19,36 +19,39 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isObscure = true;
 
   Future<void> _login() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter username and password')),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final username = _usernameController.text.trim();
-      final password = _passwordController.text;
-      final email = '$username@renom.com';
-
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
+      final user = await RenomAuthService.instance.login(
+        username: username,
         password: password,
       );
       
       // Log successful login
       await ActivityLogService.instance.logActivity(
         actionType: 'LOGIN',
-        description: 'User $username logged in',
-        metadata: {'loginMethod': 'email'},
+        description: 'User ${user.username} (${user.role}) logged in via Renom Server',
+        metadata: {'loginMethod': 'renom_server_api', 'empCode': user.empCode},
       );
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login Failed: ${e.message}')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred: $e')),
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red[800],
+          ),
         );
       }
     } finally {

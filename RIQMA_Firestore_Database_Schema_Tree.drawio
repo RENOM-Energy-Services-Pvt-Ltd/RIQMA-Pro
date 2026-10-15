@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" version="21.0.0">
+  <diagram id="firestore-schema" name="RIQMA Firestore Database Schema">
+    <mxGraphModel dx="2600" dy="3800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="3600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- HEADER -->
+        <mxCell id="top_banner" value="&lt;b&gt;&lt;font style=&quot;font-size: 26px;&quot;&gt;RIQMA-PRO CLOUD FIRESTORE DATABASE ARCHITECTURE (FULL DEPTH)&lt;/font&gt;&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Project: riqma-pro | Database: (default) | All 22 Collections, Schemas, Sub-documents &amp; Field Dictionaries&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a8a;strokeColor=#172554;fontColor=#ffffff;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="30" width="2240" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ROOT NODE -->
+        <mxCell id="root_db" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;🔥 Cloud Firestore Database: (default)&lt;/font&gt;&lt;/b&gt;&lt;br/&gt;Project: riqma-pro (Google Cloud Platform / Firebase)&lt;br/&gt;Distributed Multi-Region NoSQL Document Store" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f97316;strokeColor=#c2410c;fontColor=#ffffff;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="950" y="160" width="500" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== GROUP 1: TRANSACTIONAL & FLEET ANALYTICS ==================== -->
+        <mxCell id="g1_box" value="📊 CORE TRANSACTIONAL &amp; FLEET ANALYTICS COLLECTIONS" style="swimlane;startSize=35;fillColor=#f8fafc;strokeColor=#9333ea;fontColor=#581c87;fontStyle=1;fontSize=14;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="80" y="270" width="720" height="1520" as="geometry" />
+        </mxCell>
+
+        <!-- 1. audit_submissions -->
+        <mxCell id="c_audit_sub" value="&lt;b&gt;📁 collection: audit_submissions&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Core transactional record for wind turbine quality audits&lt;/i&gt;&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;Document ID:&lt;/b&gt; {auditId} (e.g. AUD-2026-GJ-JAM-0842)&lt;br/&gt;&lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• audit_id: String (Unique Key)&lt;br/&gt;• auditor_id: String (Auth UID)&lt;br/&gt;• auditor_name: String | auditor_email: String&lt;br/&gt;• turbine: String (e.g. WTG-JMN-042)&lt;br/&gt;• turbine_model: String | turbine_make: String&lt;br/&gt;• rating_kw: String (e.g. 2000 for 2MW)&lt;br/&gt;• customer_name: String (e.g. Tata Power)&lt;br/&gt;• state: String | site: String&lt;br/&gt;• commissioning_date: Timestamp&lt;br/&gt;• date_of_takeover: Timestamp&lt;br/&gt;• plan_date_maintenance: Timestamp&lt;br/&gt;• actual_date_maintenance: Timestamp&lt;br/&gt;• maintenance_type: String | assessment_stage: String&lt;br/&gt;• pm_lead: String | pm_team: List&amp;lt;String&amp;gt;&lt;br/&gt;• status: String (&#39;pending_self_review&#39;, &#39;pending_manager_approval&#39;, &#39;approved&#39;, &#39;correction&#39;)&lt;br/&gt;• approved_by: String (UID) | approved_by_name: String&lt;br/&gt;• approved_at: Timestamp | manager_comment: String&lt;br/&gt;• overall_score: Number (0.1 - 15.0) | workman_score: Number&lt;br/&gt;• overall_compliance: Number (%) | workman_compliance: Number (%)&lt;br/&gt;• timestamp: Timestamp (Server Creation Time)&lt;br/&gt;&lt;b&gt;• audit_data: Map&amp;lt;task_key, TaskObject&amp;gt; (Structured Map):&lt;/b&gt;&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ task_title: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ category: String | sub_category: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ reference_id: String | reference_name: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ status: String (&#39;ok&#39;, &#39;not ok&#39;, &#39;na&#39;)&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ sub_status: String (&#39;CF&#39;, &#39;MCF&#39;, &#39;Aobs&#39;)&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ nc_category: String | root_cause: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ observation: String | action_plan: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ target_date: Timestamp | pi_status: String | pi_number: String&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ photos: List&amp;lt;String&amp;gt; (Cloud Storage URLs)&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;↳ is_corrected: Boolean | closure_remark: String | closure_photo: String" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#a855f7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g1_box">
+          <mxGeometry x="20" y="50" width="680" height="520" as="geometry" />
+        </mxCell>
+
+        <!-- 2. SQA RIQMA MIS -->
+        <mxCell id="c_mis" value="&lt;b&gt;📁 collection: SQA RIQMA MIS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Flattened denormalized records for enterprise fleet analytics &amp; PowerBI&lt;/i&gt;&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;Document ID:&lt;/b&gt; {auditId}_{taskKey} (Deterministic Composite Key)&lt;br/&gt;&lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• doc_id: String (Key) | audit_id: String | task_key: String&lt;br/&gt;• financial_year: String (e.g. &#39;FY 2026-27&#39;) | audit_date: String (&#39;14.09.2026&#39;)&lt;br/&gt;• state: String | site: String | district: String | warehouse_code: String&lt;br/&gt;• turbine_no: String | turbine_make: String | turbine_model: String | turbine_rating: String&lt;br/&gt;• customer: String (Asset Owner)&lt;br/&gt;• main_category: String | sub_category: String | task_description: String&lt;br/&gt;• observation_summary: String | severity_classification: String (&#39;CF&#39;, &#39;MCF&#39;, &#39;Aobs&#39;)&lt;br/&gt;• root_cause: String | is_material_related: Boolean&lt;br/&gt;• pi_number: String | pi_status: String | status: String (&#39;Open&#39; / &#39;Close&#39;)&lt;br/&gt;• action_plan: String | plan_date: String | date_of_closure: String | action_taken: String&lt;br/&gt;• days_taken: Number | finding_photos: List&amp;lt;String&amp;gt; | closure_photo: String&lt;br/&gt;• pm_type: String | pm_lead: String | pm_team: String | pm_plan_date: String | pm_done_date: String&lt;br/&gt;• overall_score: Number | overall_compliance_pct: Number&lt;br/&gt;• workman_score: Number | workman_compliance_pct: Number&lt;br/&gt;• workman_penalty_applied: Number (1, 2, or 3)&lt;br/&gt;• approved_by_manager: String | approval_timestamp: Timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#a855f7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g1_box">
+          <mxGeometry x="20" y="590" width="680" height="420" as="geometry" />
+        </mxCell>
+
+        <!-- 3. planning_data -->
+        <mxCell id="c_plan" value="&lt;b&gt;📁 collection: planning_data&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Monthly preventive maintenance audit allocation &amp; scheduling&lt;/i&gt;&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-generated Plan UUID&lt;br/&gt;&lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• plan_id: String (Key)&lt;br/&gt;• year: String (e.g. &#39;2026&#39;) | month: String (e.g. &#39;September&#39;)&lt;br/&gt;• state: String | site: String&lt;br/&gt;• turbine: String (WTG identifier) | turbine_model: String&lt;br/&gt;• auditor_id: String (Assigned Auditor UID) | auditor_name: String&lt;br/&gt;• status: String (&#39;pending&#39;, &#39;approved&#39;, &#39;rejected&#39;)&lt;br/&gt;• created_at: Timestamp | approved_by: String | rejection_reason: String" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#a855f7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g1_box">
+          <mxGeometry x="20" y="1030" width="680" height="190" as="geometry" />
+        </mxCell>
+
+        <!-- 4. audit_configs -->
+        <mxCell id="c_cfg" value="&lt;b&gt;📁 collection: audit_configs&lt;/b&gt;&lt;br/&gt;&lt;i&gt;System governance, validation rules, and remark master dictionaries&lt;/i&gt;&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;Documents:&lt;/b&gt;&lt;br/&gt;• &lt;b&gt;doc(&#39;submission_rules&#39;):&lt;/b&gt;&lt;br/&gt;&amp;nbsp;&amp;nbsp;mandatory_photos: bool | mandatory_nc_category: bool | mandatory_action_plan: bool&lt;br/&gt;&amp;nbsp;&amp;nbsp;mandatory_root_cause: bool | mandatory_plan_date: bool | mandatory_pi_status: bool&lt;br/&gt;&amp;nbsp;&amp;nbsp;force_date_takeover_less_than_plan: bool&lt;br/&gt;• &lt;b&gt;doc(&#39;nc_categories&#39;):&lt;/b&gt; items: List&amp;lt;{ id, name, is_workman_penalty: bool }&amp;gt;&lt;br/&gt;• &lt;b&gt;doc(&#39;root_causes&#39;):&lt;/b&gt; items: List&amp;lt;{ id, label }&amp;gt; (Material / Workmanship / Tooling / Wear)&lt;br/&gt;• &lt;b&gt;doc(&#39;material_statuses&#39;):&lt;/b&gt; items: List&amp;lt;{ id, label }&amp;gt; (Indent Raised / PO Issued / Dispatched)&lt;br/&gt;• &lt;b&gt;doc(&#39;maintenance_types&#39;):&lt;/b&gt; items: List&amp;lt;{ id, label }&amp;gt; (6-Monthly / Annual / Breakdown)&lt;br/&gt;• &lt;b&gt;doc(&#39;assessment_stages&#39;):&lt;/b&gt; items: List&amp;lt;{ id, label }&amp;gt; (Takeover / Regular / Handover)&lt;br/&gt;• &lt;b&gt;doc(&#39;remarks&#39;):&lt;/b&gt; items: List&amp;lt;{ id, task_id, standard_remark }&amp;gt; (Engineering Auto-fill)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#a855f7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g1_box">
+          <mxGeometry x="20" y="1240" width="680" height="250" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== GROUP 2: MASTER DATA MANAGEMENT (MDM) ==================== -->
+        <mxCell id="g2_box" value="🏗️ MASTER DATA MANAGEMENT (MDM) &amp; ASSET REGISTRY" style="swimlane;startSize=35;fillColor=#f8fafc;strokeColor=#0284c7;fontColor=#0369a1;fontStyle=1;fontSize=14;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="840" y="270" width="720" height="1520" as="geometry" />
+        </mxCell>
+
+        <!-- turbinemodel & turbinename -->
+        <mxCell id="c_turb" value="&lt;b&gt;📁 collection: turbinemodel&lt;/b&gt; (Catalog of WTG Types)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; model_id: String, model_name: String (e.g. &#39;Gamesa G97&#39;), make: String (&#39;Gamesa&#39;, &#39;Suzlon&#39;, &#39;Vestas&#39;, &#39;Inox&#39;, &#39;GE&#39;), rating_kw: Number (2000), rotor_diameter_m: Number (97.0), hub_height_m: Number (90.0)&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: turbinename&lt;/b&gt; (Physical Installed Wind Turbines)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; turbine_id: String, turbine_name: String (e.g. &#39;WTG-JMN-042&#39;), site_id: String (FK), site_name: String, model_id: String (FK), model_name: String, customer: String, commissioning_date: Timestamp, takeover_date: Timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g2_box">
+          <mxGeometry x="20" y="50" width="680" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- Geography: zones, states, sites -->
+        <mxCell id="c_geo" value="&lt;b&gt;📁 collection: zones&lt;/b&gt; (Regional Divisions across India)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; ZONE-WEST, ZONE-SOUTH | &lt;b&gt;Fields:&lt;/b&gt; zone_id, zone_name, regional_head&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: states&lt;/b&gt; (Wind-Rich Operational States)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; state_id, state (Gujarat, Tamil Nadu, Maharashtra, Rajasthan, Karnataka), zone_id (FK), code (GJ, TN, MH)&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: sites&lt;/b&gt; (Wind Farm Project Locations &amp; Substations)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; site_id, site_name (e.g. Jamnagar Site B), state_id (FK), state, district (Jamnagar), zone, whs_code (WHS-JMN-01)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g2_box">
+          <mxGeometry x="20" y="240" width="680" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Checklist Hierarchy: main_categories, sub_categories, tasks, references -->
+        <mxCell id="c_chk" value="&lt;b&gt;📁 collection: main_categories&lt;/b&gt; (Checklist Top Hierarchy)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; id, name (Foundation, Tower, Yaw System, Nacelle, Drive Train, Generator, Blades, HPU, Panels, Safety), sort_order: Number&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: sub_categories&lt;/b&gt; (Mid-Level Sub-Systems)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; id, name (Tower Flanges, Yaw Calipers, Pinion Gears, Pitch Bearings, Inline Filter), main_category_id: String (FK), sort_order: Number&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: tasks&lt;/b&gt; (Granular Inspection Checkpoints)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; id, task (e.g. &#39;Check yaw gear tooth pitting and backlash&#39;), model_id: String (FK), sub_category_id: String (FK), reference_id: String (FK), sort_order: Number&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: references&lt;/b&gt; (Standard Engineering SOPs)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; id, ref_code (e.g. REN-SOP-MECH-042), ref_name (Full Procedure Title), document_link: String (Storage PDF URL), description: String" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g2_box">
+          <mxGeometry x="20" y="460" width="680" height="340" as="geometry" />
+        </mxCell>
+
+        <!-- Customers & NC Master -->
+        <mxCell id="c_cust" value="&lt;b&gt;📁 collection: customers&lt;/b&gt; (Renewable Asset Owners / IPPs)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; customer_id, customer_name (Tata Power, Adani Green, CLP, ReNew), corporate_code, contact_email, address&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: ncs&lt;/b&gt; (Catalog of Standard Non-Conformances)&lt;br/&gt;&lt;b&gt;Doc ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; nc_id, nc_category (Mechanical Wear, Electrical Burn, Hydraulic Leakage), severity_level (&#39;CF&#39;, &#39;MCF&#39;, &#39;Aobs&#39;), description" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0f172a;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g2_box">
+          <mxGeometry x="20" y="820" width="680" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== GROUP 3: USERS, LEAN & SYSTEM LOGS ==================== -->
+        <mxCell id="g3_box" value="🔐 USERS, RBAC, 5S LEAN, KAIZEN &amp; AUDIT LOGS" style="swimlane;startSize=35;fillColor=#f8fafc;strokeColor=#16a34a;fontColor=#15803d;fontStyle=1;fontSize=14;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="270" width="720" height="1520" as="geometry" />
+        </mxCell>
+
+        <!-- Users & Roles -->
+        <mxCell id="c_usr" value="&lt;b&gt;📁 collection: users&lt;/b&gt; (Enterprise User Accounts &amp; Territorial Mapping)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; {uid} (Firebase Auth UID, e.g. usr_948271a0b3)&lt;br/&gt;&lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• uid: String (Auth UID Key)&lt;br/&gt;• email: String (e.g. 2164@renom.com)&lt;br/&gt;• name: String (Employee Full Name)&lt;br/&gt;• role: String (&#39;admin&#39;, &#39;manager&#39;, &#39;auditor&#39;)&lt;br/&gt;• assigned_state: String (e.g. &#39;Gujarat&#39;) | assigned_state_id: String (FK)&lt;br/&gt;• created_at: Timestamp&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: roles&lt;/b&gt; (Granular RBAC Permissions)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; &#39;admin&#39;, &#39;manager&#39;, &#39;auditor&#39;&lt;br/&gt;&lt;b&gt;Fields:&lt;/b&gt; role_id, role_name, permissions_list: Array&amp;lt;String&amp;gt;, description" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g3_box">
+          <mxGeometry x="20" y="50" width="680" height="210" as="geometry" />
+        </mxCell>
+
+        <!-- 5S Submissions -->
+        <mxCell id="c_5s" value="&lt;b&gt;📁 collection: five_s_submissions&lt;/b&gt; (5S Workplace Lean Housekeeping)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• five_s_id: String | site_id: String (FK) | auditor_id: String&lt;br/&gt;• scores: Map { 1S_sort: Number, 2S_set_in_order: Number, 3S_shine: Number, 4S_standardize: Number, 5S_sustain: Number }&lt;br/&gt;• total_score: Number | photos: List&amp;lt;String&amp;gt; | created_at: Timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g3_box">
+          <mxGeometry x="20" y="280" width="680" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Kaizen & Training Materials -->
+        <mxCell id="c_kaizen" value="&lt;b&gt;📁 collection: kaizen_submissions&lt;/b&gt; (Continuous Improvement Proposals)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• kaizen_id: String | title: String | problem: String | solution: String&lt;br/&gt;• benefits: String | photos: List&amp;lt;String&amp;gt; (Before/After) | status: String (&#39;submitted&#39;, &#39;approved&#39;, &#39;rejected&#39;) | submitted_by: String&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: training_materials&lt;/b&gt; (Digital SOP &amp; Engineering Training Library)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt; material_id: String, title: String, category: String, file_url: String (Cloud Storage PDF), uploaded_at: Timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g3_box">
+          <mxGeometry x="20" y="450" width="680" height="210" as="geometry" />
+        </mxCell>
+
+        <!-- activity_logs & notifications -->
+        <mxCell id="c_logs" value="&lt;b&gt;📁 collection: activity_logs&lt;/b&gt; (Immutable ISO 9001 System Audit Trail)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• userId: String (UID) | userName: String | userRole: String&lt;br/&gt;• actionType: String (&#39;LOGIN&#39;, &#39;AUDIT_START&#39;, &#39;AUDIT_SUBMIT&#39;, &#39;REPORT_APPROVE&#39;, &#39;REPORT_CORRECTION&#39;)&lt;br/&gt;• description: String | timestamp: Timestamp | metadata: Map&amp;lt;String, dynamic&amp;gt;&lt;br/&gt;&lt;hr/&gt;&lt;b&gt;📁 collection: notifications&lt;/b&gt; (Real-Time In-App &amp; Push Alert Queue)&lt;br/&gt;&lt;b&gt;Document ID:&lt;/b&gt; Auto-ID | &lt;b&gt;Fields:&lt;/b&gt;&lt;br/&gt;• recipient_id: String (Target User UID) | title: String | body: String | is_read: Boolean | link: String | created_at: Timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="g3_box">
+          <mxGeometry x="20" y="680" width="680" height="230" as="geometry" />
+        </mxCell>
+
+        <!-- CONNECTIONS FROM ROOT -->
+        <mxCell id="e_g1" edge="1" source="root_db" target="g1_box" parent="1" style="strokeColor=#9333ea;strokeWidth=2.5;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_g2" edge="1" source="root_db" target="g2_box" parent="1" style="strokeColor=#0284c7;strokeWidth=2.5;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_g3" edge="1" source="root_db" target="g3_box" parent="1" style="strokeColor=#16a34a;strokeWidth=2.5;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

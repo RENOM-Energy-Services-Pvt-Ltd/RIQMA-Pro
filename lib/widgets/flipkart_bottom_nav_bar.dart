@@ -60,23 +60,34 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
 
   // Continuous indicator position [0.0 ... items.length - 1]
   double _currentProgress = 0.0;
+  double _targetProgress = 0.0;
   bool _isDragging = false;
   int _lastHapticIndex = -1;
+
+  // Drag tracking anchor points to prevent sudden jumps
+  double _dragStartX = 0.0;
+  double _dragStartProgress = 0.0;
 
   @override
   void initState() {
     super.initState();
     _currentProgress = widget.currentIndex.toDouble();
+    _targetProgress = widget.currentIndex.toDouble();
     _lastHapticIndex = widget.currentIndex;
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 320),
     );
 
-    _animation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
+    _animation = Tween<double>(
+      begin: _currentProgress,
+      end: _currentProgress,
+    ).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+      ),
     );
 
     _animController.addListener(() {
@@ -91,8 +102,13 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
   @override
   void didUpdateWidget(covariant FlipkartBottomNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentIndex != widget.currentIndex && !_isDragging) {
-      _animateTo(widget.currentIndex.toDouble());
+    if (oldWidget.currentIndex != widget.currentIndex) {
+      // Avoid interrupting an in-progress drag or an animation already moving to this target
+      if (!_isDragging &&
+          (!_animController.isAnimating ||
+              (_targetProgress - widget.currentIndex.toDouble()).abs() > 0.01)) {
+        _animateTo(widget.currentIndex.toDouble());
+      }
     }
   }
 
@@ -103,47 +119,55 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
   }
 
   void _animateTo(double targetValue) {
-    _animController
-      ..stop()
-      ..reset();
+    if ((_currentProgress - targetValue).abs() < 0.001) {
+      _currentProgress = targetValue;
+      return;
+    }
+
+    _targetProgress = targetValue;
+    _animController.stop();
+
+    // Preserve exact visual position as the animation origin
+    final start = _currentProgress;
+
     _animation = Tween<double>(
-      begin: _currentProgress,
+      begin: start,
       end: targetValue,
     ).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: Curves.easeOutCubic,
+        curve: const Cubic(0.22, 1.0, 0.36, 1.0),
       ),
     );
-    _animController.forward();
+
+    // Forward from 0.0 without reset() so listeners start strictly from 'start'
+    _animController.forward(from: 0.0);
   }
 
-  void _updateProgressFromDx(double dx, double totalWidth) {
-    final tabWidth = totalWidth / widget.items.length;
-    final progress = (dx - (tabWidth / 2)) / tabWidth;
-    final clamped = progress.clamp(0.0, (widget.items.length - 1).toDouble());
+  void _onHorizontalDragStart(DragStartDetails details, double totalWidth) {
+    _animController.stop();
+    _dragStartX = details.localPosition.dx;
+    _dragStartProgress = _currentProgress;
+    setState(() {
+      _isDragging = true;
+    });
+  }
 
-    final nearestIndex = clamped.round();
+  void _onHorizontalDragUpdate(DragUpdateDetails details, double totalWidth) {
+    final tabWidth = totalWidth / widget.items.length;
+    final deltaProgress = (details.localPosition.dx - _dragStartX) / tabWidth;
+    final newProgress = (_dragStartProgress + deltaProgress)
+        .clamp(0.0, (widget.items.length - 1).toDouble());
+
+    final nearestIndex = newProgress.round();
     if (nearestIndex != _lastHapticIndex) {
       _lastHapticIndex = nearestIndex;
       HapticFeedback.selectionClick();
     }
 
     setState(() {
-      _currentProgress = clamped;
+      _currentProgress = newProgress;
     });
-  }
-
-  void _onHorizontalDragStart(DragStartDetails details, double totalWidth) {
-    _animController.stop();
-    setState(() {
-      _isDragging = true;
-    });
-    _updateProgressFromDx(details.localPosition.dx, totalWidth);
-  }
-
-  void _onHorizontalDragUpdate(DragUpdateDetails details, double totalWidth) {
-    _updateProgressFromDx(details.localPosition.dx, totalWidth);
   }
 
   void _onHorizontalDragEnd(DragEndDetails details, double totalWidth) {
@@ -152,7 +176,8 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
     });
 
     final velocity = details.primaryVelocity ?? 0.0;
-    final velocityBonus = (velocity / 1200.0).clamp(-0.8, 0.8);
+    // Fling bonus based on swipe speed
+    final velocityBonus = (velocity / 1000.0).clamp(-0.8, 0.8);
     final projected = _currentProgress + velocityBonus;
     final targetIndex = projected.round().clamp(0, widget.items.length - 1);
 
@@ -188,19 +213,26 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final bgColor = widget.backgroundColor ??
-        (isDark ? const Color(0xFF1E2126) : Colors.white);
-
     // Renom Teal default active color
     final activeColor = widget.activeColor ?? const Color(0xFF00897B);
 
     final inactiveColor = widget.inactiveColor ??
         (isDark ? const Color(0xFF9EA3AE) : const Color(0xFF6B7280));
 
-    final indicatorColor = widget.indicatorColor ??
-        (isDark
-            ? const Color(0xFF00897B).withValues(alpha: 0.28)
-            : const Color(0xFF00897B).withValues(alpha: 0.12));
+    final glassColors = widget.backgroundColor != null
+        ? [
+            widget.backgroundColor!.withValues(alpha: isDark ? 0.72 : 0.72),
+            widget.backgroundColor!.withValues(alpha: isDark ? 0.82 : 0.48),
+          ]
+        : (isDark
+            ? [
+                const Color(0xFF22262F).withValues(alpha: 0.72),
+                const Color(0xFF14171E).withValues(alpha: 0.82),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.72),
+                Colors.white.withValues(alpha: 0.48),
+              ]);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -231,16 +263,20 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(widget.height / 2),
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                  filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
                   child: Container(
                     height: widget.height,
                     decoration: BoxDecoration(
-                      color: bgColor.withValues(alpha: isDark ? 0.82 : 0.88),
                       borderRadius: BorderRadius.circular(widget.height / 2),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: glassColors,
+                      ),
                       border: Border.all(
                         color: isDark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.8),
+                            ? Colors.white.withValues(alpha: 0.20)
+                            : Colors.white.withValues(alpha: 0.85),
                         width: 1.2,
                       ),
                       boxShadow: [
@@ -248,15 +284,15 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                           color: isDark
                               ? const Color(0x66000000)
                               : const Color(0x18000000),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
                           spreadRadius: 0,
                         ),
                         BoxShadow(
                           color: isDark
                               ? const Color(0x33000000)
                               : const Color(0x0A000000),
-                          blurRadius: 8,
+                          blurRadius: 10,
                           offset: const Offset(0, 2),
                         ),
                       ],
@@ -264,33 +300,99 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                     child: Stack(
                       alignment: Alignment.centerLeft,
                       children: [
-                        // Sliding Smart Glass Capsule
+                        // Subtle top rim specular highlight
+                        Positioned(
+                          top: 1,
+                          left: 20,
+                          right: 20,
+                          height: 1.0,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.0),
+                                  Colors.white.withValues(alpha: isDark ? 0.30 : 0.70),
+                                  Colors.white.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Sliding Smart Pure Glass Capsule
                         Positioned(
                           left: indicatorLeft,
                           top: (widget.height - indicatorHeight) / 2,
                           width: indicatorWidth,
                           height: indicatorHeight,
                           child: AnimatedScale(
-                            scale: _isDragging ? 1.04 : 1.0,
-                            duration: const Duration(milliseconds: 120),
+                            scale: _isDragging ? 1.05 : 1.0,
+                            duration: const Duration(milliseconds: 140),
                             curve: Curves.easeOut,
                             child: Container(
                               decoration: BoxDecoration(
-                                color: indicatorColor,
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(22),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: isDark
+                                      ? [
+                                          Colors.white.withValues(alpha: 0.28),
+                                          Colors.white.withValues(alpha: 0.08),
+                                          activeColor.withValues(alpha: 0.24),
+                                        ]
+                                      : [
+                                          Colors.white.withValues(alpha: 0.95),
+                                          Colors.white.withValues(alpha: 0.45),
+                                          activeColor.withValues(alpha: 0.16),
+                                        ],
+                                  stops: const [0.0, 0.45, 1.0],
+                                ),
                                 border: Border.all(
                                   color: isDark
-                                      ? const Color(0xFF00897B).withValues(alpha: 0.35)
-                                      : const Color(0xFF00897B).withValues(alpha: 0.22),
-                                  width: 1.0,
+                                      ? Colors.white.withValues(alpha: 0.35)
+                                      : Colors.white.withValues(alpha: 0.95),
+                                  width: 1.3,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: const Color(0xFF00897B).withValues(
-                                      alpha: _isDragging ? 0.25 : 0.10,
+                                    color: (isDark ? Colors.black : activeColor).withValues(
+                                      alpha: isDark
+                                          ? (_isDragging ? 0.60 : 0.35)
+                                          : (_isDragging ? 0.26 : 0.14),
                                     ),
-                                    blurRadius: _isDragging ? 12 : 6,
-                                    offset: const Offset(0, 2),
+                                    blurRadius: _isDragging ? 16 : 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                  if (!isDark)
+                                    BoxShadow(
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, -1),
+                                      spreadRadius: 0.5,
+                                    ),
+                                ],
+                              ),
+                              child: Stack(
+                                children: [
+                                  // Specular glass glare highlight strip at top of capsule
+                                  Positioned(
+                                    top: 2,
+                                    left: 10,
+                                    right: 10,
+                                    height: 1.5,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(2),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.white.withValues(alpha: 0.0),
+                                            Colors.white.withValues(alpha: isDark ? 0.40 : 0.90),
+                                            Colors.white.withValues(alpha: 0.0),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -312,7 +414,7 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                             )!;
 
                             final scale = 1.0 + (0.05 * proximity);
-                            final isSelected = index == widget.currentIndex;
+                            final isSelected = proximity > 0.5;
 
                             return Expanded(
                               child: Transform.scale(

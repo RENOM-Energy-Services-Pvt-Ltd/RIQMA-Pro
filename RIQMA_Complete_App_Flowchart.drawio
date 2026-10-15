@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-09-17T00:00:00.000Z" agent="Mozilla/5.0" version="21.0.0" type="device">
+  <diagram id="riqma-flow" name="RIQMA Complete Flowchart">
+    <mxGraphModel dx="2400" dy="3600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="3200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE BANNER -->
+        <mxCell id="title" value="&lt;b&gt;&lt;font style=&quot;font-size: 24px;&quot;&gt;RIQMA COMPLETE END-TO-END OPERATIONAL WORKFLOW&lt;/font&gt;&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Detailed Architecture: Mobile App Execution, WebApp Auditor Self-Review Screen &amp; Manager Review Engine with Back-Cycles&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a8a;strokeColor=#172554;fontColor=#ffffff;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="30" width="1680" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- SWIMLANE 1: RIQMA-PRO MOBILE APP -->
+        <mxCell id="lane_pro" value="📱 RIQMA-Pro Mobile / Tablet App (Field Auditor Operations)" style="swimlane;startSize=45;fillColor=#f0fdf4;strokeColor=#86efac;fontColor=#166534;fontStyle=1;fontSize=15;rounded=1;arcSize=4;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="145" width="680" height="2950" as="geometry" />
+        </mxCell>
+
+        <!-- SWIMLANE 2: RIQMA-WEBAPP PORTAL -->
+        <mxCell id="lane_web" value="💻 riqma-webapp Portal (Auditor Self-Review Screen &amp; Manager Review Workspace)" style="swimlane;startSize=45;fillColor=#eff6ff;strokeColor=#93c5fd;fontColor=#1e40af;fontStyle=1;fontSize=15;rounded=1;arcSize=4;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="780" y="145" width="960" height="2950" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- PHASE 1: LOGIN & PLANNING (STEPS 1-3) -->
+        <!-- ======================================================== -->
+        <mxCell id="step1" value="&lt;b&gt;1. Auditor Login (RIQMA-Pro)&lt;/b&gt;&lt;br/&gt;Employee ID auto-domain: 2164@renom.com&lt;br/&gt;Firebase Auth Token issuance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="215" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step2" value="&lt;b&gt;2. Planning Tab -&gt; Add Plan (+)&lt;/b&gt;&lt;br/&gt;Select Year, Month, State, Site, Turbine Model, Turbine ID&lt;br/&gt;Status: &#39;pending&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0d9488;fontColor=#0f766e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="315" width="360" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cloud_plan" value="&lt;b&gt;Cloud Firestore: planning_data&lt;/b&gt;&lt;br/&gt;Record saved with status: &#39;pending&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#581c87;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="610" y="415" width="280" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step3" value="&lt;b&gt;3. Manager Reviews Plan (riqma-webapp)&lt;/b&gt;&lt;br/&gt;planning_screen.dart: Validates site access &amp; availability" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="315" width="360" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec1" value="&lt;b&gt;Manager Approves&lt;br/&gt;Audit Plan?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="415" width="200" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="plan_rej" value="&lt;b&gt;PLAN REJECTED&lt;/b&gt;&lt;br/&gt;Reason logged in Firestore" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1390" y="430" width="170" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="plan_app" value="&lt;b&gt;PLAN APPROVED&lt;/b&gt;&lt;br/&gt;Status: &#39;approved&#39; in planning_data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="535" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- PHASE 2: MOBILE FIELD EXECUTION (STEPS 4-10) -->
+        <!-- ======================================================== -->
+        <mxCell id="step4" value="&lt;b&gt;4. RIQMA-Pro 4 Main Navigation Tabs:&lt;/b&gt;&lt;br/&gt;[ 🏠 Dashboard ]  •  [ 📋 Audit ]  •  [ 📊 Statistics ]  •  [ 📅 Planning ]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0369a1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="180" y="530" width="440" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step5" value="&lt;b&gt;5 &amp; 6. Audit Tab: Shows Approved Audit Plan List&lt;/b&gt;&lt;br/&gt;Auditor sees assigned approved turbine inspections&lt;br/&gt;Filter by Month, State, Site, Turbine Model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#16a34a;fontColor=#14532d;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="180" y="625" width="440" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step7" value="&lt;b&gt;7. Select Turbine &amp; Tap &#39;Start Audit&#39;&lt;/b&gt;&lt;br/&gt;Loads dynamic model checklist; enables local IndexedDB cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#16a34a;strokeColor=#14532d;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="720" width="360" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step8" value="&lt;b&gt;8. Main Category Screen&lt;/b&gt;&lt;br/&gt;Tower &amp; Foundation, Yaw System, Nacelle, Drive Train, Blades, HPU, Panels" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0d9488;strokeColor=#115e59;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="805" width="360" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step9" value="&lt;b&gt;9. Sub-Category Screen&lt;/b&gt;&lt;br/&gt;Tower Flanges, Yaw Calipers, Pinion Gears, Lubrication System, etc." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ccfbf1;strokeColor=#0d9488;fontColor=#0f766e;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="220" y="890" width="360" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step10" value="&lt;b&gt;10. Checkpoint Runner Screen (audit_task_screen.dart)&lt;/b&gt;&lt;br/&gt;Read task title, detailed criteria description &amp; SOP reference guidelines" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f172a;fontColor=#0f172a;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="180" y="975" width="440" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- PHASE 3: EVALUATION & OBSERVATION (STEPS 11-16) -->
+        <!-- ======================================================== -->
+        <mxCell id="dec2" value="&lt;b&gt;11. Checkpoint Status:&lt;br/&gt;OK, Not OK, or N/A?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="290" y="1065" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="status_ok" value="&lt;b&gt;PASS / OK&lt;/b&gt;&lt;br/&gt;0 Penalty Points" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1195" width="120" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="status_na" value="&lt;b&gt;N/A&lt;/b&gt;&lt;br/&gt;Excluded from max points" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;fontColor=#334155;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="230" y="1195" width="120" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="status_not_ok" value="&lt;b&gt;NOT OK / FAIL&lt;/b&gt;&lt;br/&gt;Defect NC Pipeline Triggered" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="370" y="1195" width="200" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="defect_details" value="&lt;b&gt;12. Select Criticality:&lt;/b&gt; CF (3 pts) | MCF (2 pts) | Aobs (1 pt)&lt;br/&gt;&lt;b&gt;13. Capture Photo Evidence:&lt;/b&gt; Camera (~400KB compression)&lt;br/&gt;&lt;b&gt;14. Fill Observation &amp; Root Cause Category&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1275" width="280" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec3" value="&lt;b&gt;15. Point Closed&lt;br/&gt;During Audit (On-Spot)?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="375" y="1375" width="210" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="on_spot_corr" value="&lt;b&gt;Record On-Spot Correction:&lt;/b&gt;&lt;br/&gt;• Capture Proof Photo&lt;br/&gt;• Enter Closure Remark&lt;br/&gt;• is_corrected = true" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#14532d;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1382" width="250" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="open_defect" value="&lt;b&gt;16. Remains Open Defect:&lt;/b&gt;&lt;br/&gt;• Action Plan &amp; Target Date&lt;br/&gt;• If Material Not Available: PI Status &amp; Number" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef9c3;strokeColor=#ca8a04;fontColor=#854d0e;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="350" y="1495" width="260" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- PHASE 4: COMPLETENESS & SYNC (STEPS 17-20) -->
+        <!-- ======================================================== -->
+        <mxCell id="dec4" value="&lt;b&gt;17. All Checkpoints&lt;br/&gt;Inspected (100%)?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="290" y="1595" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pending_list" value="&lt;b&gt;18. Show Pending List:&lt;/b&gt;&lt;br/&gt;Red alert cards for missing items" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1610" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="self_review" value="&lt;b&gt;Auditor Self-Review &amp; Sign-off (Mobile)&lt;/b&gt;&lt;br/&gt;OK / Not OK / NA summary &amp; signatures" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#16a34a;strokeColor=#14532d;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="230" y="1725" width="340" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec5" value="&lt;b&gt;19. Network Speed&lt;br/&gt;Good / Stable?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1820" width="200" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="weak_net" value="&lt;b&gt;Weak / Disconnected:&lt;/b&gt;&lt;br/&gt;Queue locally in IndexedDB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;fontColor=#334155;fontSize=11.5;" vertex="1" parent="1">
+          <mxGeometry x="90" y="1832" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step20" value="&lt;b&gt;20. Photos Uploaded BATCH-WISE&lt;/b&gt;&lt;br/&gt;To Google Cloud Storage bucket (riqma-pro)&lt;br/&gt;Audit JSON payload saved to Firestore &#39;audit_submissions&#39;&lt;br/&gt;&lt;i&gt;Status: &#39;pending_self_review&#39; or initial sync&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#581c87;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="210" y="1940" width="380" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- EXPANDED SECTION: AUDITOR WEB SCREEN (riqma-webapp) -->
+        <!-- ======================================================== -->
+        <mxCell id="web_auditor_box" value="🖥️ AUDITOR WORKSPACE IN RIQMA-WEBAPP (Fill Remaining Details)" style="swimlane;startSize=30;fillColor=#f8fafc;strokeColor=#0284c7;fontColor=#0369a1;fontStyle=1;fontSize=13;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="810" y="1740" width="430" height="970" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step1" value="&lt;b&gt;A. Auditor Dashboard Screen (auditor_dashboard.dart)&lt;/b&gt;&lt;br/&gt;• Queries audit_submissions where auditor_id == user.uid&lt;br/&gt;• Shows audits with status: &#39;pending_self_review&#39; or &#39;correction&#39;&lt;br/&gt;• Taps &#39;Review&#39; button to open full self-review screen" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0284c7;fontColor=#0f172a;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="45" width="380" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step2" value="&lt;b&gt;B. Fill Turbine &amp; Maintenance Metadata (Top Panel)&lt;/b&gt;&lt;br/&gt;• WTG Model &amp; Rating (kW) | Turbine Make&lt;br/&gt;• Customer Name (e.g., Tata Power, Adani Green)&lt;br/&gt;• Commissioning Date &amp; Date of Takeover&lt;br/&gt;• Maintenance Plan Date &amp; Actual Maintenance Date&lt;br/&gt;• PM Lead &amp; PM Team Members (Crew Allocation Dialog)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0369a1;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="145" width="380" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step3" value="&lt;b&gt;C. Task Observation &amp; Defect Enrichment (Right Panel)&lt;/b&gt;&lt;br/&gt;• Filter by &#39;Not OK&#39; tasks to focus on defects&lt;br/&gt;• Master Remarks Popup (audit_configs/remarks): Selects standard engineering remediation text&lt;br/&gt;• Enriches Observation Notes &amp; Remediation Action Plan&lt;br/&gt;• Sets Target Resolution Date" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0f172a;fontColor=#0f172a;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="270" width="380" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step4" value="&lt;b&gt;D. Root Cause &amp; Purchase Indent (PI) Linkage&lt;/b&gt;&lt;br/&gt;• Selects Root Cause (Material / Workmanship / Wear / Tooling)&lt;br/&gt;• If Material Not Available: Mandatory PI Status &amp; PI Number&lt;br/&gt;• Links field defect directly to Renom ERP Procurement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef9c3;strokeColor=#ca8a04;fontColor=#854d0e;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="390" width="380" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step5" value="&lt;b&gt;E. Photo Evidence Management &amp; Closure Review&lt;/b&gt;&lt;br/&gt;• Inspects uploaded mobile photos in high resolution&lt;br/&gt;• Can upload additional desktop photos or delete blur images&lt;br/&gt;• Verifies On-Spot Correction proof photo &amp; closure remarks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0d9488;fontColor=#0f766e;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="500" width="380" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_step6" value="&lt;b&gt;F. Enforce Governance Submission Rules&lt;/b&gt;&lt;br/&gt;• Validates mandatory photos, NC categories, action plans&lt;br/&gt;• Validates Takeover Date &lt; Maintenance Plan Date&lt;br/&gt;• Blocks submission if mandatory fields missing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="610" width="380" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec_rules" value="&lt;b&gt;All Submission Rules&lt;br/&gt;Satisfied?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=11.5;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="115" y="715" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fix_fields" value="&lt;b&gt;Fix Missing Fields:&lt;/b&gt; Highlighted in Red" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="820" width="170" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="w_submit" value="&lt;b&gt;G. Submit for Manager Approval&lt;/b&gt;&lt;br/&gt;• Status updates: &#39;pending_manager_approval&#39;&lt;br/&gt;• Immutable activity logged: reportSubmit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#16a34a;strokeColor=#14532d;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="215" y="820" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="auto_score" value="&lt;b&gt;Automated Scoring Engine (mis_service.dart)&lt;/b&gt;&lt;br/&gt;Overall Score (out of 15.0) | Workman Score | Compliance %" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#a855f7;fontColor=#6b21a8;fontSize=11;" vertex="1" parent="web_auditor_box">
+          <mxGeometry x="25" y="895" width="380" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- EXPANDED SECTION: MANAGER REVIEW SCREEN (riqma-webapp) -->
+        <!-- ======================================================== -->
+        <mxCell id="web_mgr_box" value="👔 MANAGER REVIEW &amp; GOVERNANCE WORKSPACE (riqma-webapp)" style="swimlane;startSize=30;fillColor=#f8fafc;strokeColor=#1e3a8a;fontColor=#1e3a8a;fontStyle=1;fontSize=13;rounded=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="1740" width="440" height="970" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_dash" value="&lt;b&gt;1. Executive Management Dashboard (dashboard_screen.dart)&lt;/b&gt;&lt;br/&gt;• Real-time reactive stream: &#39;Pending Manager Review&#39; counter&lt;br/&gt;• Click KPI card to open filtered Audit Reports Grid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1e3a8a;fontColor=#0f172a;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="45" width="390" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_review_screen" value="&lt;b&gt;2. Manager Review Screen (audit_review_screen.dart)&lt;/b&gt;&lt;br/&gt;&lt;i&gt;Spanning over 6,360 lines of high-density Flutter code&lt;/i&gt;&lt;br/&gt;• Split-Screen Review Environment&lt;br/&gt;• Synchronized Category Navigation Tree (OK, Not OK, NA)&lt;br/&gt;• Verifies Turbine Metadata, PM Crew &amp; Commissioning Dates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a8a;strokeColor=#0f172a;fontColor=#ffffff;fontStyle=1;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="145" width="390" height="95" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_photo_zoom" value="&lt;b&gt;3. Full-Resolution Photographic Defect Inspection&lt;/b&gt;&lt;br/&gt;• Full-screen photo zoom dialog for crack &amp; wear inspection&lt;br/&gt;• Validates On-Spot Correction photos before/after closure&lt;br/&gt;• Verifies Root Cause assignment accuracy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0284c7;fontColor=#0369a1;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="265" width="390" height="85" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_penalty" value="&lt;b&gt;4. Workman Penalty &amp; Severity Assessment&lt;/b&gt;&lt;br/&gt;• Verifies Criticality: CF (3 pts), MCF (2 pts), Aobs (1 pt)&lt;br/&gt;• Evaluates Workman Penalty deductions against crew" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf5ff;strokeColor=#9333ea;fontColor=#581c87;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="375" width="390" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dec_mgr" value="&lt;b&gt;5. Manager Decision:&lt;br/&gt;Approve or Return for Correction?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#78350f;fontStyle=1;fontSize=12;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="100" y="475" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_correction" value="&lt;b&gt;RETURN FOR CORRECTION&lt;/b&gt;&lt;br/&gt;• Manager inputs directive in &#39;manager_comment&#39;&lt;br/&gt;• Status updates to: &#39;correction&#39;&lt;br/&gt;• Activity logged: reportCorrection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="590" width="185" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_approved" value="&lt;b&gt;AUDIT APPROVED&lt;/b&gt;&lt;br/&gt;• Status updates to: &#39;approved&#39;&lt;br/&gt;• Stamps approved_by, approved_by_name &amp; approved_at server timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="230" y="590" width="185" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_mis" value="&lt;b&gt;6. MISService: Atomic Batch Sync&lt;/b&gt;&lt;br/&gt;• syncAuditToMIS() writes flattened records&lt;br/&gt;• Collection: &#39;SQA RIQMA MIS&#39; (Key: {auditId}_{taskKey})&lt;br/&gt;• Applies workman penalties &amp; FY tags (FY 2026-27)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8ff;strokeColor=#9333ea;fontColor=#581c87;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="695" width="390" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_excel" value="&lt;b&gt;7. ExcelExportService: Multi-Tab SQA Excel&lt;/b&gt;&lt;br/&gt;• generateDigitalSqaReportExcel() via Syncfusion XlsIO&lt;br/&gt;• Color-coded severity badges (CF, MCF, Aobs)&lt;br/&gt;• Workman &amp; Overall score badges (#00B050, #FFFF00)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f766e;strokeColor=#115e59;fontColor=#ffffff;fontStyle=1;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="795" width="390" height="75" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m_pdf" value="&lt;b&gt;8. DigitalSqaReportScreen: Official Vector PDF&lt;/b&gt;&lt;br/&gt;• Compiles publication-grade client certificate in 3 seconds&lt;br/&gt;• Embedded photos, compliance scores, digital sign-offs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0284c7;strokeColor=#0369a1;fontColor=#ffffff;fontStyle=1;fontSize=11.5;" vertex="1" parent="web_mgr_box">
+          <mxGeometry x="25" y="885" width="390" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- FINAL CLOSURE -->
+        <mxCell id="final_close" value="&lt;b&gt;Audit Closed &amp; Fleet Analytics Updated&lt;/b&gt;&lt;br/&gt;PowerBI Live Ingestion &amp; Corporate Executive KPI Cockpit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a8a;strokeColor=#0f172a;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1050" y="2740" width="440" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ======================================================== -->
+        <!-- EDGES & BACK-CYCLES -->
+        <!-- ======================================================== -->
+        <mxCell id="e1" edge="1" source="step1" target="step2" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" edge="1" source="step2" target="cloud_plan" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" edge="1" source="cloud_plan" target="step3" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" edge="1" source="step3" target="dec1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Decision 1 Back-Cycle (Plan Rejection) -->
+        <mxCell id="e5_rej" value="NO (Reject)" edge="1" source="dec1" target="plan_rej" parent="1" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5_loop" value="BACK-CYCLE: Plan Rejected -&gt; Auditor Creates Corrected Plan" edge="1" source="plan_rej" target="step2" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#dc2626;dashed=1;dashPattern=8 8;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1475" y="295" /><mxPoint x="400" y="295" /></Array></mxGeometry></mxCell>
+
+        <!-- Decision 1 Approved -->
+        <mxCell id="e6_app" value="YES (Approved)" edge="1" source="dec1" target="plan_app" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7_sync" value="Syncs to App" edge="1" source="plan_app" target="step4" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e8" edge="1" source="step4" target="step5" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" edge="1" source="step5" target="step7" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" edge="1" source="step7" target="step8" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" edge="1" source="step8" target="step9" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" edge="1" source="step9" target="step10" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" edge="1" source="step10" target="dec2" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Decision 2: OK / NA / Not OK -->
+        <mxCell id="e14_ok" value="OK" edge="1" source="dec2" target="status_ok" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14_na" value="N/A" edge="1" source="dec2" target="status_na" parent="1" style="strokeColor=#64748b;fontColor=#64748b;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14_not_ok" value="Not OK" edge="1" source="dec2" target="status_not_ok" parent="1" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e15" edge="1" source="status_not_ok" target="defect_details" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" edge="1" source="defect_details" target="dec3" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Decision 3: On-Spot Closure -->
+        <mxCell id="e17_spot" value="YES (Closed)" edge="1" source="dec3" target="on_spot_corr" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17_open" value="NO (Open)" edge="1" source="dec3" target="open_defect" parent="1" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e18_a" edge="1" source="status_ok" target="dec4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18_b" edge="1" source="status_na" target="dec4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18_c" edge="1" source="on_spot_corr" target="dec4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18_d" edge="1" source="open_defect" target="dec4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Decision 4: Completeness (Back-Cycle 1) -->
+        <mxCell id="e19_pend" value="NO (Pending)" edge="1" source="dec4" target="pending_list" parent="1" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19_loop" value="BACK-CYCLE: Return to Complete Pending Checkpoints" edge="1" source="pending_list" target="step10" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#dc2626;dashed=1;dashPattern=8 8;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="65" y="1640" /><mxPoint x="65" y="1002" /></Array></mxGeometry></mxCell>
+
+        <mxCell id="e20_done" value="YES (100% Done)" edge="1" source="dec4" target="self_review" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" edge="1" source="self_review" target="dec5" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Decision 5: Network Speed -->
+        <mxCell id="e22_weak" value="NO (Weak / Offline)" edge="1" source="dec5" target="weak_net" parent="1" style="strokeColor=#64748b;fontColor=#64748b;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e22_good" value="YES (Good Speed)" edge="1" source="dec5" target="step20" parent="1" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- ======================================================== -->
+        <!-- SYNC TO WEBAPP AUDITOR WORKSPACE -->
+        <!-- ======================================================== -->
+        <mxCell id="e_sync_web" value="SYNC TO AUDITOR SCREEN FOR REMAINING DETAILS" edge="1" source="step20" target="w_step1" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#0284c7;strokeWidth=2.5;fontColor=#0284c7;fontStyle=1;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="710" y="1977" /><mxPoint x="710" y="1822" /></Array></mxGeometry></mxCell>
+
+        <mxCell id="we1" edge="1" source="w_step1" target="w_step2" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we2" edge="1" source="w_step2" target="w_step3" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we3" edge="1" source="w_step3" target="w_step4" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we4" edge="1" source="w_step4" target="w_step5" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we5" edge="1" source="w_step5" target="w_step6" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we6" edge="1" source="w_step6" target="dec_rules" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we7_fix" value="NO" edge="1" source="dec_rules" target="fix_fields" parent="web_auditor_box" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we7_loop" edge="1" source="fix_fields" target="w_step2" parent="web_auditor_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#dc2626;dashed=1;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="15" y="842" /><mxPoint x="15" y="195" /></Array></mxGeometry></mxCell>
+        <mxCell id="we8_ok" value="YES" edge="1" source="dec_rules" target="w_submit" parent="web_auditor_box" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="we9" edge="1" source="w_submit" target="auto_score" parent="web_auditor_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- SUBMITTED TO MANAGER WORKSPACE -->
+        <mxCell id="e_to_mgr" value="Submitted to Manager" edge="1" source="auto_score" target="m_dash" parent="1" style="strokeColor=#1e3a8a;strokeWidth=2;fontColor=#1e3a8a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="me1" edge="1" source="m_dash" target="m_review_screen" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me2" edge="1" source="m_review_screen" target="m_photo_zoom" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me3" edge="1" source="m_photo_zoom" target="m_penalty" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me4" edge="1" source="m_penalty" target="dec_mgr" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- MANAGER DECISION: REJECT / CORRECTION (BACK-CYCLE) -->
+        <mxCell id="me5_corr" value="REJECT / CORRECTION" edge="1" source="dec_mgr" target="m_correction" parent="web_mgr_box" style="strokeColor=#dc2626;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_mgr_loop" value="BACK-CYCLE: Manager Returns for Correction -&gt; Auditor Re-opens Self-Review Screen" edge="1" source="m_correction" target="w_step1" parent="1" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#dc2626;strokeWidth=2.5;dashed=1;dashPattern=8 8;fontColor=#dc2626;fontStyle=1;"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1285" y="2380" /><mxPoint x="1255" y="2380" /><mxPoint x="1255" y="1785" /></Array></mxGeometry></mxCell>
+
+        <!-- MANAGER DECISION: APPROVED -->
+        <mxCell id="me5_app" value="APPROVED" edge="1" source="dec_mgr" target="m_approved" parent="web_mgr_box" style="strokeColor=#16a34a;fontColor=#16a34a;fontStyle=1;"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me6" edge="1" source="m_approved" target="m_mis" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me7" edge="1" source="m_mis" target="m_excel" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me8" edge="1" source="m_excel" target="m_pdf" parent="web_mgr_box"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="me9" edge="1" source="m_pdf" target="final_close" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

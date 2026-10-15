@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_manager.dart';
+import '../../services/renom_master_data_service.dart';
 import '../../widgets/searchable_dropdown.dart';
 import '../audit_main_categories_screen.dart';
 
@@ -58,63 +59,70 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
 
   Future<void> _fetchMasterData() async {
     try {
-      // Fetch all collections in parallel
-      final results = await Future.wait([
-        FirebaseFirestore.instance.collection('states').get(),
-        FirebaseFirestore.instance.collection('sites').get(),
-        FirebaseFirestore.instance.collection('turbinemodel').get(),
-        FirebaseFirestore.instance.collection('turbinename').get(),
-      ]);
+      // 1. Fetch from Renom Server API (with automatic local cache & Firestore fallback)
+      final renomStates = await RenomMasterDataService.instance.getStates();
+      final renomSites = await RenomMasterDataService.instance.getSites();
+      final renomTurbineData = await RenomMasterDataService.instance.getTurbinesAndModels();
 
-      setState(() {
-        _allStates = results[0].docs.map((doc) {
-          final data = doc.data();
-          return <String, dynamic>{
-            'id': doc.id,
-            'reference': doc.reference,
-            ...data,
-          };
-        }).toList();
+      final List<Map<String, dynamic>> states = renomStates;
+      final List<Map<String, dynamic>> sites = renomSites;
+      final List<Map<String, dynamic>> models = renomTurbineData['models'] ?? [];
+      final List<Map<String, dynamic>> turbines = renomTurbineData['turbines'] ?? [];
 
-        _allSites = results[1].docs.map((doc) {
-          final data = doc.data();
-          return <String, dynamic>{
-            'id': doc.id,
-            'reference': doc.reference,
-            ...data,
-          };
-        }).toList();
+      if (states.isNotEmpty && sites.isNotEmpty) {
+        setState(() {
+          _allStates = states.map((s) => <String, dynamic>{
+            'reference': FirebaseFirestore.instance.collection('states').doc(s['id'].toString()),
+            ...s,
+          }).toList();
 
-        _allModels = results[2].docs.map((doc) {
-          final data = doc.data();
-          return <String, dynamic>{
-            'id': doc.id,
-            'reference': doc.reference,
-            ...data,
-          };
-        }).toList();
+          _allSites = sites.map((s) => <String, dynamic>{
+            'reference': FirebaseFirestore.instance.collection('sites').doc(s['id'].toString()),
+            ...s,
+          }).toList();
 
-        _allTurbines = results[3].docs.map((doc) {
-          final data = doc.data();
-          return <String, dynamic>{
-            'id': doc.id,
-            'reference': doc.reference,
-            ...data,
-          };
-        }).toList();
+          _allModels = models.map((m) => <String, dynamic>{
+            'reference': FirebaseFirestore.instance.collection('turbinemodel').doc(m['id'].toString()),
+            ...m,
+          }).toList();
 
-        _isLoading = false;
-      });
+          _allTurbines = turbines.map((t) => <String, dynamic>{
+            'reference': FirebaseFirestore.instance.collection('turbinename').doc(t['id'].toString()),
+            ...t,
+          }).toList();
+
+          _isLoading = false;
+        });
+      } else {
+        // Fallback: Direct Firestore fetch
+        final results = await Future.wait([
+          FirebaseFirestore.instance.collection('states').get(),
+          FirebaseFirestore.instance.collection('sites').get(),
+          FirebaseFirestore.instance.collection('turbinemodel').get(),
+          FirebaseFirestore.instance.collection('turbinename').get(),
+        ]);
+
+        setState(() {
+          _allStates = results[0].docs.map((doc) => {'id': doc.id, 'reference': doc.reference, ...doc.data()}).toList();
+          _allSites = results[1].docs.map((doc) => {'id': doc.id, 'reference': doc.reference, ...doc.data()}).toList();
+          _allModels = results[2].docs.map((doc) => {'id': doc.id, 'reference': doc.reference, ...doc.data()}).toList();
+          _allTurbines = results[3].docs.map((doc) => {'id': doc.id, 'reference': doc.reference, ...doc.data()}).toList();
+          _isLoading = false;
+        });
+      }
 
       // Apply User Restriction if assignedState is present
-      if (widget.assignedState != null && widget.assignedState!.isNotEmpty) {
+      if (widget.assignedState != null && widget.assignedState!.isNotEmpty && widget.assignedState != 'All') {
+        final assigned = widget.assignedState!.trim().toLowerCase();
         final matchingState = _allStates.firstWhere(
-          (doc) => doc['state'] == widget.assignedState,
-          orElse: () => _allStates.first, // Fallback if not found
+          (doc) => (doc['state']?.toString().trim().toLowerCase() == assigned) ||
+                   (doc['name']?.toString().trim().toLowerCase() == assigned),
+          orElse: () => _allStates.isNotEmpty ? _allStates.first : {},
         );
         
-        // Auto-select and lock state
-        _onStateSelected(matchingState['id'] as String?);
+        if (matchingState.isNotEmpty) {
+          _onStateSelected(matchingState['id'] as String?);
+        }
       }
     } catch (e) {
       debugPrint('Error fetching master data: $e');
@@ -136,11 +144,18 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
       _selectedModelId = null;
       _selectedTurbineId = null;
 
-      // Filter Sites: where state_ref == selected state doc ref
+      final stateDoc = _allStates.firstWhere((s) => s['id'] == stateId, orElse: () => {});
+      final stateName = stateDoc['name']?.toString() ?? stateDoc['state']?.toString() ?? '';
       final stateRef = FirebaseFirestore.instance.collection('states').doc(stateId);
+
       _visibleSites = _allSites.where((doc) {
+        // Match by state_id (Renom API)
+        if (doc['state_id'] != null && doc['state_id'].toString() == stateId) return true;
+        // Match by state name
+        if (stateName.isNotEmpty && (doc['state_name'] == stateName || doc['state'] == stateName)) return true;
+        // Match by Firestore DocumentReference
         final ref = doc['state_ref'] as DocumentReference?;
-        return ref == stateRef;
+        return ref == stateRef || ref?.id == stateId;
       }).toList();
 
       _visibleModels = [];
@@ -156,17 +171,24 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
       _selectedModelId = null;
       _selectedTurbineId = null;
 
-      // Filter Models: check site_ids array OR site_ref
+      final siteDoc = _allSites.firstWhere((s) => s['id'] == siteId, orElse: () => {});
+      final siteName = siteDoc['site_name']?.toString() ?? siteDoc['name']?.toString() ?? '';
       final siteRef = FirebaseFirestore.instance.collection('sites').doc(siteId);
 
       _visibleModels = _allModels.where((doc) {
-        // Check new schema: site_ids array
+        // 1. Renom API: Match models that have turbines on this site
+        if (_allTurbines.any((t) => (t['site_name'] == siteName || t['site'] == siteName || t['site_id'] == siteId) &&
+                                    (t['model'] == doc['name'] || t['turbine_model'] == doc['name'] || t['model'] == doc['id']))) {
+          return true;
+        }
+
+        // 2. Firestore schema: site_ids array
         if (doc.containsKey('site_ids') && doc['site_ids'] is List) {
           final siteIds = doc['site_ids'] as List<dynamic>;
           if (siteIds.contains(siteRef) || siteIds.contains(siteId)) return true;
         }
         
-        // Check legacy schema: site_ref
+        // 3. Legacy schema: site_ref
         if (doc.containsKey('site_ref') && doc['site_ref'] is DocumentReference) {
           final ref = doc['site_ref'] as DocumentReference<Object?>;
           if (ref.id == siteId) return true;
@@ -186,12 +208,20 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
       _selectedModelId = modelId;
       _selectedTurbineId = null;
 
-      // Filter Turbines: where turbinemodel_ref == selected model doc ref AND site_ref == selected site doc ref
+      final siteDoc = _allSites.firstWhere((s) => s['id'] == _selectedSiteId, orElse: () => {});
+      final siteName = siteDoc['site_name']?.toString() ?? siteDoc['name']?.toString() ?? '';
+      final modelDoc = _allModels.firstWhere((m) => m['id'] == modelId, orElse: () => {});
+      final modelName = modelDoc['name']?.toString() ?? modelDoc['turbine_model']?.toString() ?? modelId;
       final modelRef = FirebaseFirestore.instance.collection('turbinemodel').doc(modelId);
+
       _visibleTurbines = _allTurbines.where((doc) {
-        final siteRef = doc['site_ref'] as DocumentReference?;
+        final matchesSite = (doc['site_name'] == siteName || doc['site'] == siteName || doc['site_id'] == _selectedSiteId);
+        final matchesModel = (doc['model'] == modelName || doc['turbine_model'] == modelName || doc['model'] == modelId || doc['turbine_model'] == modelId);
+        if (matchesSite && matchesModel) return true;
+
+        final sRef = doc['site_ref'] as DocumentReference?;
         final ref = doc['turbinemodel_ref'] as DocumentReference?;
-        return siteRef?.id == _selectedSiteId && ref == modelRef;
+        return sRef?.id == _selectedSiteId && (ref == modelRef || ref?.id == modelId);
       }).toList();
     });
   }
@@ -227,26 +257,34 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
     final turbineDoc = _allTurbines.firstWhere((doc) => doc['id'] == _selectedTurbineId);
     final stateDoc = _allStates.firstWhere((doc) => doc['id'] == _selectedStateId);
 
-    final siteName = siteDoc['site_name']?.toString() ?? 'Unknown Site';
+    final siteName = siteDoc['site_name']?.toString() ?? siteDoc['name']?.toString() ?? 'Unknown Site';
     final turbineName = turbineDoc['turbine_name']?.toString() ?? turbineDoc['name']?.toString() ?? turbineDoc['turbine_id']?.toString() ?? 'Unknown Turbine';
-    final stateName = stateDoc['state']?.toString() ?? 'Unknown State';
-    final modelName = modelDoc['turbine_model']?.toString() ?? 'Unknown Model';
+    final stateName = stateDoc['state']?.toString() ?? stateDoc['name']?.toString() ?? 'Unknown State';
+    final modelName = modelDoc['turbine_model']?.toString() ?? modelDoc['name']?.toString() ?? 'Unknown Model';
 
     // Save Draft Metadata
     final unplannedDraftId = 'unplanned_${turbineDoc['id']}';
     await AuditManager.instance.saveDraftMetadata(
       draftId: unplannedDraftId,
-      siteId: siteDoc['id'] as String,
+      siteId: siteDoc['id'].toString(),
       siteName: siteName,
-      turbineId: turbineDoc['id'] as String,
+      turbineId: turbineDoc['id'].toString(),
       turbineName: turbineName,
       stateName: stateName,
-      modelId: modelDoc['id'] as String,
+      modelId: modelDoc['id'].toString(),
       modelName: modelName,
       planId: 'unplanned',
     );
 
     if (!mounted) return;
+
+    final DocumentReference modelRef = (modelDoc['reference'] is DocumentReference)
+        ? modelDoc['reference'] as DocumentReference<Object?>
+        : FirebaseFirestore.instance.collection('turbinemodel').doc(modelDoc['id'].toString());
+
+    final DocumentReference siteRef = (siteDoc['reference'] is DocumentReference)
+        ? siteDoc['reference'] as DocumentReference<Object?>
+        : FirebaseFirestore.instance.collection('sites').doc(siteDoc['id'].toString());
 
     await Navigator.push(
       context,
@@ -254,10 +292,10 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
         builder: (context) => AuditMainCategoriesScreen(
           siteName: siteName,
           turbineName: turbineName,
-          turbineModelRef: modelDoc['reference'] as DocumentReference<Object?>,
-          siteRef: siteDoc['reference'] as DocumentReference<Object?>,
-          siteId: siteDoc['id'] as String,
-          turbineId: turbineDoc['id'] as String,
+          turbineModelRef: modelRef,
+          siteRef: siteRef,
+          siteId: siteDoc['id'].toString(),
+          turbineId: turbineDoc['id'].toString(),
           stateName: stateName,
         ),
       ),

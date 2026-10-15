@@ -15,6 +15,7 @@ import 'screens/login_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/activity_log_service.dart';
 import 'services/notification_service.dart';
+import 'services/renom_auth_service.dart';
 
 /// Top-level background message handler (must be outside of any class)
 @pragma('vm:entry-point')
@@ -56,6 +57,9 @@ Future<void> main() async {
     persistenceEnabled: true,
     cacheSizeBytes: 100 * 1024 * 1024, // 100 MB for deep offline storage
   );
+
+  // 5. Initialize Renom Auth Session
+  await RenomAuthService.instance.init();
 
   // 5. Initialize services (Moved to Splash Screen to avoid blocking UI)
   
@@ -155,26 +159,33 @@ class MyApp extends StatelessWidget {
 }
 
 /// Authentication Wrapper
-/// Decides whether to show Dashboard or Login based on Auth State
+/// Decides whether to show Dashboard or Login based on Renom Auth or Firebase Auth State
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // While checking auth, we could show a simple loader or continue splash visual
-          // Since we already waited 4s, likely this is instant.
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasData) {
+    return ValueListenableBuilder<RenomUser?>(
+      valueListenable: RenomAuthService.instance.userNotifier,
+      builder: (context, renomUser, _) {
+        if (renomUser != null && renomUser.jwtToken.isNotEmpty) {
           return const DashboardScreen();
         }
-        return const LoginScreen();
+
+        return StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasData && snapshot.data != null && !snapshot.data!.isAnonymous) {
+              return const DashboardScreen();
+            }
+            return const LoginScreen();
+          },
+        );
       },
     );
   }
