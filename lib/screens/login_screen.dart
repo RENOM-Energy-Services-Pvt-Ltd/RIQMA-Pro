@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -34,17 +35,65 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final user = await RenomAuthService.instance.login(
-        username: username,
+      final email = username.contains('@') ? username : '$username@renom.com';
+
+      // 1. Primary: Authenticate with Firebase Authentication
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
         password: password,
       );
-      
+
+      // Attempt Renom portal sync if available
+      try {
+        await RenomAuthService.instance.login(
+          username: username,
+          password: password,
+        );
+      } catch (_) {
+        // Optional portal sync
+      }
+
       // Log successful login
       await ActivityLogService.instance.logActivity(
         actionType: 'LOGIN',
-        description: 'User ${user.username} (${user.role}) logged in via Renom Server',
-        metadata: {'loginMethod': 'renom_server_api', 'empCode': user.empCode},
+        description: 'User $username logged in',
+        metadata: {'loginMethod': 'email'},
       );
+    } on FirebaseAuthException catch (firebaseErr) {
+      // 2. Fallback to Renom Server Portal Authentication
+      bool renomSuccess = false;
+      try {
+        final user = await RenomAuthService.instance.login(
+          username: username,
+          password: password,
+        );
+        renomSuccess = true;
+        await ActivityLogService.instance.logActivity(
+          actionType: 'LOGIN',
+          description: 'User ${user.username} (${user.role}) logged in via Renom Server',
+          metadata: {'loginMethod': 'renom_server_api', 'empCode': user.empCode},
+        );
+      } catch (_) {}
+
+      if (!renomSuccess && mounted) {
+        String msg = 'Incorrect username or password.';
+        if (firebaseErr.code == 'user-not-found') {
+          msg = 'User not found. Please check your username.';
+        } else if (firebaseErr.code == 'wrong-password' || firebaseErr.code == 'invalid-credential') {
+          msg = 'Incorrect password. Please try again.';
+        } else if (firebaseErr.code == 'too-many-requests') {
+          msg = 'Too many failed attempts. Please try again later.';
+        } else if (firebaseErr.message != null && firebaseErr.message!.isNotEmpty) {
+          msg = firebaseErr.message!;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red[800],
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
