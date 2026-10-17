@@ -207,40 +207,75 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   Future<void> _capturePhoto(String taskId) async {
-    final source = await _selectPhotoSource(context);
-    if (source == null) return;
+    try {
+      final source = await _selectPhotoSource(context);
+      if (source == null) return;
 
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: source);
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: source);
 
-    if (image != null) {
-      String finalPath;
+      if (image != null) {
+        String finalPath;
 
-      if (kIsWeb) {
-        // Web: Skip compression and saving, use path directly (blob url)
-        finalPath = image.path;
-      } else {
-        // Mobile: Compress and save
-        final appDir = await getApplicationDocumentsDirectory();
-        final fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final targetPath = p.join(appDir.path, fileName);
+        if (kIsWeb) {
+          // Web: Skip compression and saving, use path directly (blob url)
+          finalPath = image.path;
+        } else {
+          // Mobile: Compress and save
+          final appDir = await getApplicationDocumentsDirectory();
+          final fileName = '${taskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final targetPath = p.join(appDir.path, fileName);
 
-        final compressedFile = await FlutterImageCompress.compressAndGetFile(
-          image.path,
-          targetPath,
-          quality: 70,
+          String? savedPath;
+          try {
+            final compressedFile = await FlutterImageCompress.compressAndGetFile(
+              image.path,
+              targetPath,
+              quality: 70,
+            );
+            if (compressedFile != null && await File(compressedFile.path).exists()) {
+              savedPath = compressedFile.path;
+            }
+          } catch (compressErr) {
+            debugPrint('⚠️ Image compression error: $compressErr, falling back to original copy');
+          }
+
+          // Bulletproof Fallback: If compression returned null or failed, copy original file directly!
+          if (savedPath == null) {
+            try {
+              final originalFile = File(image.path);
+              if (await originalFile.exists()) {
+                final copiedFile = await originalFile.copy(targetPath);
+                savedPath = copiedFile.path;
+              } else {
+                savedPath = image.path;
+              }
+            } catch (copyErr) {
+              debugPrint('⚠️ Error copying original image: $copyErr');
+              savedPath = image.path;
+            }
+          }
+
+          finalPath = savedPath;
+        }
+
+        // Update auditData
+        if (!auditData.containsKey(taskId)) {
+          auditData[taskId] = {};
+        }
+        final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? [])..add(finalPath);
+        _updateAnswer(taskId, 'photos', currentPhotos);
+      }
+    } catch (e) {
+      debugPrint('❌ Error in _capturePhoto: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to attach photo: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
-
-        if (compressedFile == null) return;
-        finalPath = compressedFile.path;
       }
-
-      // Update auditData
-      if (!auditData.containsKey(taskId)) {
-        auditData[taskId] = {};
-      }
-      final currentPhotos = List<String>.from((auditData[taskId]!['photos'] as List<dynamic>?) ?? [])..add(finalPath);
-      _updateAnswer(taskId, 'photos', currentPhotos);
     }
   }
 
@@ -916,9 +951,31 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(5),
-                                  child: kIsWeb
-                                      ? Image.network(path, width: 80, height: 80, fit: BoxFit.cover)
-                                      : Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover),
+                                  child: (kIsWeb || path.startsWith('http'))
+                                      ? Image.network(
+                                          path,
+                                          width: 80,
+                                          height: 80,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 80,
+                                            height: 80,
+                                            color: Colors.grey.shade200,
+                                            child: const Icon(Icons.broken_image, color: Colors.grey, size: 24),
+                                          ),
+                                        )
+                                      : Image.file(
+                                          File(path),
+                                          width: 80,
+                                          height: 80,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 80,
+                                            height: 80,
+                                            color: Colors.grey.shade200,
+                                            child: const Icon(Icons.broken_image, color: Colors.grey, size: 24),
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
@@ -1180,9 +1237,21 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
               panEnabled: true,
               minScale: 0.5,
               maxScale: 4,
-              child: kIsWeb
-                  ? Image.network(path, fit: BoxFit.contain)
-                  : Image.file(File(path), fit: BoxFit.contain),
+              child: (kIsWeb || path.startsWith('http'))
+                  ? Image.network(
+                      path,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.broken_image, color: Colors.white, size: 48),
+                      ),
+                    )
+                  : Image.file(
+                      File(path),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.broken_image, color: Colors.white, size: 48),
+                      ),
+                    ),
             ),
             Positioned(
               top: 40,
@@ -1272,17 +1341,34 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
       final fileName = '${taskId}_closure_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final targetPath = p.join(appDir.path, fileName);
       
-      final compressedFile = await FlutterImageCompress.compressAndGetFile(
-        imageFile.path,
-        targetPath,
-        quality: 70, // Match main observation photo quality
-      );
+      try {
+        final compressedFile = await FlutterImageCompress.compressAndGetFile(
+          imageFile.path,
+          targetPath,
+          quality: 70, // Match main observation photo quality
+        );
+        if (compressedFile != null && await File(compressedFile.path).exists()) {
+          return compressedFile.path;
+        }
+      } catch (compressErr) {
+        debugPrint('⚠️ Closure image compression failed: $compressErr, falling back to copy');
+      }
+
+      // Fallback: Copy original file directly
+      try {
+        final originalFile = File(imageFile.path);
+        if (await originalFile.exists()) {
+          final copied = await originalFile.copy(targetPath);
+          return copied.path;
+        }
+      } catch (copyErr) {
+        debugPrint('⚠️ Error copying original closure image: $copyErr');
+      }
       
-      if (compressedFile == null) return null;
-      return compressedFile.path;
+      return imageFile.path;
     } catch (e) {
       debugPrint('Error compressing closure photo: $e');
-      return null;
+      return imageFile.path;
     }
   }
 
@@ -1359,11 +1445,13 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           ),
                           alignment: Alignment.center,
                           child: pickedImage != null
-                              ? kIsWeb 
+                              ? (kIsWeb || pickedImage!.path.startsWith('http')
                                   ? Image.network(pickedImage!.path, fit: BoxFit.cover) 
-                                  : Image.file(File(pickedImage!.path), fit: BoxFit.cover)
+                                  : Image.file(File(pickedImage!.path), fit: BoxFit.cover))
                               : currentPhotoUrl != null
-                                  ? Image.network(currentPhotoUrl!, fit: BoxFit.cover)
+                                  ? (kIsWeb || currentPhotoUrl!.startsWith('http')
+                                      ? Image.network(currentPhotoUrl!, fit: BoxFit.cover)
+                                      : Image.file(File(currentPhotoUrl!), fit: BoxFit.cover))
                                   : const Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [

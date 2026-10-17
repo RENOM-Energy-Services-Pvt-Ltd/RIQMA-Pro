@@ -60,14 +60,15 @@ jobs:
           name: RIQMA Pro ${{ steps.get_version.outputs.tag }}
           body: |
             ### RIQMA Pro ${{ steps.get_version.outputs.tag }} Update
-            - Next-Gen Interactive Bottom Navigation Bar:
-              * Elastic liquid pill stretch during tab transitions & drag
-              * Ambient neon underglow aura & optical glass reflection
-              * Bouncy 3D icon pop with elastic spring physics & luminescence
+            - Bulletproof Photo Upload Engine with Zero-Photo-Loss Guarantee:
+              * Resilient local photo retention during partial or failed uploads
+              * Dedicated bandwidth sequential uploads with adaptive exponential backoff
+              * Automatic multi-pass auto-retries (up to 3 passes) for weak site connections
+              * Direct camera capture & gallery album import fallback protection
+              * Strict verification gate: 100% photo validation before audit submission
+              * Interactive recovery modal with 1-click retry for pending photos
             - Direct In-App 1-Click Update System
-            - Fix: Simultaneous batch loading for audit categories
-            - Performance: Parallelized Firestore queries via Future.wait
-            - Fast in-memory counter refresh on navigation without skeleton flickering
+            - Next-Gen Interactive Bottom Navigation Bar
             - Dual Authentication: Firebase Auth with Renom Server fallback
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false

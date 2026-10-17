@@ -8,6 +8,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../services/activity_log_service.dart';
 import '../services/audit_manager.dart';
@@ -265,53 +267,61 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
       finalData[key] = Map<String, dynamic>.from(value as Map);
     });
 
-    // Count total photos to upload (excluding already uploaded URLs)
-    // Also validate that local files actually exist
-    var totalPhotos = 0;
-    var totalClosurePhotos = 0;
+    // Count photos and resolve paths to verify local presence
+    var totalPhotosToUpload = 0;
+    var totalClosurePhotosToUpload = 0;
+    var alreadyUploadedCount = 0;
     var missingFiles = 0;
-    
+
     for (var taskId in finalData.keys) {
       final taskData = finalData[taskId]!;
-      if (taskData.containsKey('photos')) {
-        final photos = (taskData['photos'] as List<dynamic>?) ?? [];
-        for (var photo in photos) {
-          final path = photo.toString();
-          if (!path.startsWith('http')) {
-            // Check if file exists (mobile only)
+      if (taskData.containsKey('photos') && taskData['photos'] is List) {
+        final photos = List<dynamic>.from(taskData['photos'] as List);
+        for (var i = 0; i < photos.length; i++) {
+          final path = photos[i].toString();
+          if (path.startsWith('http://') || path.startsWith('https://')) {
+            alreadyUploadedCount++;
+          } else {
             if (!kIsWeb) {
-              final file = File(path);
-              if (file.existsSync()) {
-                totalPhotos++;
+              final resolved = await _resolvePhotoFile(path);
+              if (resolved != null) {
+                photos[i] = resolved.path; // Update to exact resolved path
+                totalPhotosToUpload++;
               } else {
                 missingFiles++;
                 debugPrint('⚠️ Missing photo file: $path');
               }
             } else {
-              totalPhotos++;
+              totalPhotosToUpload++;
             }
           }
         }
+        taskData['photos'] = photos;
       }
       if (taskData.containsKey('closure_photo_local_path')) {
-        final path = taskData['closure_photo_local_path'] as String;
-        if (!path.startsWith('http')) {
-          if (!kIsWeb) {
-            final file = File(path);
-            if (file.existsSync()) {
-              totalClosurePhotos++;
-            } else {
-              missingFiles++;
-              debugPrint('⚠️ Missing closure photo file: $path');
-            }
+        final path = taskData['closure_photo_local_path'].toString();
+        if (path.isNotEmpty) {
+          if (path.startsWith('http://') || path.startsWith('https://')) {
+            alreadyUploadedCount++;
           } else {
-            totalClosurePhotos++;
+            if (!kIsWeb) {
+              final resolved = await _resolvePhotoFile(path);
+              if (resolved != null) {
+                taskData['closure_photo_local_path'] = resolved.path;
+                totalClosurePhotosToUpload++;
+              } else {
+                missingFiles++;
+                debugPrint('⚠️ Missing closure photo file: $path');
+              }
+            } else {
+              totalClosurePhotosToUpload++;
+            }
           }
         }
       }
     }
 
-    final grandTotal = totalPhotos + totalClosurePhotos;
+    final grandTotal = totalPhotosToUpload + totalClosurePhotosToUpload + alreadyUploadedCount;
     
     // Warn if files are missing (likely due to app reinstall)
     if (missingFiles > 0) {
@@ -327,9 +337,9 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
 
     // Progress tracking with ValueNotifier
     final uploadProgress = ValueNotifier<Map<String, dynamic>>({
-      'current': 0,
+      'current': alreadyUploadedCount,
       'total': grandTotal,
-      'status': 'Preparing upload...',
+      'status': (totalPhotosToUpload + totalClosurePhotosToUpload) > 0 ? 'Preparing photo upload...' : 'Saving to server...',
     });
 
     // Show progress dialog
@@ -401,117 +411,231 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     ));
 
     try {
-      var uploadedCount = 0;
+      var completedCount = alreadyUploadedCount;
 
-      // BATCHED IMAGE UPLOAD LOOP
-      const batchSize = 3; // Process 3 photos at a time
-      
-      for (var taskId in finalData.keys) {
-        final taskData = finalData[taskId]!;
-        if (taskData.containsKey('photos')) {
-          final localPaths = List<String>.from((taskData['photos'] as List<dynamic>?) ?? []);
-          final downloadUrls = <String>[];
-          
-          // Filter out already-uploaded URLs
-          final pathsToUpload = <String>[];
-          for (var path in localPaths) {
-            if (path.startsWith('http')) {
-              downloadUrls.add(path); // Already uploaded
-            } else {
-              pathsToUpload.add(path);
+      // MULTI-PASS ROBUST UPLOAD LOOP (Up to 3 passes across all tasks)
+      const maxPasses = 3;
+      for (var pass = 1; pass <= maxPasses; pass++) {
+        var anyUploadInThisPass = false;
+
+        // 1. Process standard task photos (Dedicated bandwidth / Sequential)
+        for (var taskId in finalData.keys) {
+          final taskData = finalData[taskId]!;
+          if (!taskData.containsKey('photos') || taskData['photos'] is! List) continue;
+
+          final currentList = List<String>.from((taskData['photos'] as List).map((e) => e.toString()));
+          var taskUpdated = false;
+
+          for (var i = 0; i < currentList.length; i++) {
+            final photoPath = currentList[i];
+            if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+              continue; // Already on server
             }
-          }
-          
-          // Process in batches
-          var failedCount = 0;
-          for (var i = 0; i < pathsToUpload.length; i += batchSize) {
-            final batch = pathsToUpload.sublist(i, min(i + batchSize, pathsToUpload.length));
-            
-            // Upload batch in parallel
-            final batchResults = await Future.wait(
-              batch.map((path) => _uploadPhotoWithRetry(path, taskId)),
+
+            anyUploadInThisPass = true;
+            uploadProgress.value = {
+              'current': completedCount,
+              'total': grandTotal,
+              'status': pass > 1 
+                  ? 'Retrying photo ${completedCount + 1}/$grandTotal (Pass $pass)...' 
+                  : 'Uploading photo ${completedCount + 1}/$grandTotal...',
+            };
+
+            final downloadUrl = await _uploadPhotoWithRetry(
+              photoPath, 
+              taskId,
+              photoType: 'obs_$i',
+              onStatusUpdate: (msg) {
+                uploadProgress.value = {
+                  'current': completedCount,
+                  'total': grandTotal,
+                  'status': 'Photo ${completedCount + 1}/$grandTotal: $msg',
+                };
+              },
             );
-            
-            // Collect successful uploads and count failures
-            for (var result in batchResults) {
-              if (result != null) {
-                downloadUrls.add(result);
-              } else {
-                failedCount++;
-              }
-            }
-            
-            // Update progress
-            uploadedCount += batch.length;
-            final statusText = failedCount > 0 
-              ? 'Uploading... ($failedCount failed)' 
-              : 'Processing task photos...';
-            uploadProgress.value = {
-              'current': uploadedCount,
-              'total': grandTotal,
-              'status': statusText,
-            };
-          }
-          
-          if (failedCount > 0) {
-            debugPrint('⚠️ Task $taskId: $failedCount photos failed to upload');
-          }
-          
-          // Replace local paths with download URLs
-          taskData['photos'] = downloadUrls;
 
-          // SAVE PROGRESS: Update local storage with URLs immediately
-          // This ensures that if the app crashes now, the next retry will see URLs
-          // and skip re-uploading.
-          AuditManager.instance.saveAnswer(taskId, taskData);
+            if (downloadUrl != null) {
+              currentList[i] = downloadUrl;
+              taskUpdated = true;
+              completedCount++;
+              uploadProgress.value = {
+                'current': completedCount,
+                'total': grandTotal,
+                'status': 'Uploaded photo $completedCount of $grandTotal',
+              };
+            }
+          }
+
+          if (taskUpdated) {
+            taskData['photos'] = currentList;
+            // IMMEDIATELY SAVE PROGRESS: Uploaded URLs are preserved, local paths remain for retries
+            AuditManager.instance.saveAnswer(taskId, taskData);
+          }
         }
-      }
 
-      // Closure Photo Upload Loop (for Offline-First Deviation Correction)
-      for (var taskId in finalData.keys) {
-        final taskData = finalData[taskId]!;
-        if (taskData.containsKey('closure_photo_local_path')) {
-          final localPath = taskData['closure_photo_local_path'] as String;
-          // Check if it's a local path (not already a URL)
-          if (!localPath.startsWith('http')) {
+        // 2. Process closure photos (for offline-first deviation corrections)
+        for (var taskId in finalData.keys) {
+          final taskData = finalData[taskId]!;
+          if (!taskData.containsKey('closure_photo_local_path')) continue;
+          final localPath = taskData['closure_photo_local_path'].toString();
+          if (localPath.isEmpty || localPath.startsWith('http://') || localPath.startsWith('https://')) {
+            continue;
+          }
+
+          anyUploadInThisPass = true;
+          uploadProgress.value = {
+            'current': completedCount,
+            'total': grandTotal,
+            'status': pass > 1 
+                ? 'Retrying closure photo (Pass $pass)...' 
+                : 'Uploading closure photo...',
+          };
+
+          final downloadUrl = await _uploadPhotoWithRetry(
+            localPath, 
+            taskId,
+            photoType: 'closure',
+            onStatusUpdate: (msg) {
+              uploadProgress.value = {
+                'current': completedCount,
+                'total': grandTotal,
+                'status': 'Closure photo: $msg',
+              };
+            },
+          );
+
+          if (downloadUrl != null) {
+            taskData['closure_photo'] = downloadUrl;
+            taskData.remove('closure_photo_local_path');
+            completedCount++;
+            AuditManager.instance.saveAnswer(taskId, taskData);
             uploadProgress.value = {
-              'current': uploadedCount,
-              'total': grandTotal,
-              'status': 'Uploading closure photo...',
-            };
-            
-            try {
-              final fileName = '${taskId}_closure_${DateTime.now().millisecondsSinceEpoch}.jpg';
-              final storagePath = 'audit_closures/${widget.siteName.replaceAll(' ', '_')}_${widget.turbineName.replaceAll(' ', '_')}/$fileName';
-              final ref = FirebaseStorage.instance.ref().child(storagePath);
-              
-              if (kIsWeb) {
-                final xFile = XFile(localPath);
-                final fileBytes = await xFile.readAsBytes();
-                await ref.putData(fileBytes, SettableMetadata(contentType: 'image/jpeg'));
-              } else {
-                final file = File(localPath);
-                if (await file.exists()) {
-                  await ref.putFile(file);
-                }
-              }
-              
-              final url = await ref.getDownloadURL();
-              taskData['closure_photo'] = url;
-            } catch (e) {
-              debugPrint('Error uploading closure photo for task $taskId: $e');
-            }
-            
-            uploadedCount++;
-            uploadProgress.value = {
-              'current': uploadedCount,
+              'current': completedCount,
               'total': grandTotal,
               'status': 'Closure photo uploaded',
             };
           }
-          // Clean up temporary field
-          taskData.remove('closure_photo_local_path');
         }
+
+        if (!anyUploadInThisPass) {
+          break; // Everything was already uploaded
+        }
+
+        // Check if any local photos still remain
+        var hasLocalPending = false;
+        for (var td in finalData.values) {
+          if (td.containsKey('photos') && td['photos'] is List) {
+            for (var p in (td['photos'] as List)) {
+              if (!p.toString().startsWith('http://') && !p.toString().startsWith('https://')) {
+                hasLocalPending = true;
+                break;
+              }
+            }
+          }
+          if (td.containsKey('closure_photo_local_path')) {
+            final p = td['closure_photo_local_path'].toString();
+            if (!p.startsWith('http://') && !p.startsWith('https://')) {
+              hasLocalPending = true;
+            }
+          }
+          if (hasLocalPending) break;
+        }
+
+        if (!hasLocalPending) {
+          break; // 100% of photos uploaded!
+        }
+
+        if (pass < maxPasses) {
+          uploadProgress.value = {
+            'current': completedCount,
+            'total': grandTotal,
+            'status': 'Stabilizing connection before retry (Pass ${pass + 1})...',
+          };
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+      }
+
+      // ── STRICT ZERO-PHOTO-LOSS VERIFICATION GATE ──
+      final remainingFailedPhotos = <String>[];
+      for (var entry in finalData.entries) {
+        final td = entry.value;
+        if (td.containsKey('photos') && td['photos'] is List) {
+          for (var p in (td['photos'] as List)) {
+            final str = p.toString();
+            if (!str.startsWith('http://') && !str.startsWith('https://')) {
+              remainingFailedPhotos.add(str);
+            }
+          }
+        }
+        if (td.containsKey('closure_photo_local_path')) {
+          final str = td['closure_photo_local_path'].toString();
+          if (!str.startsWith('http://') && !str.startsWith('https://')) {
+            remainingFailedPhotos.add(str);
+          }
+        }
+      }
+
+      if (remainingFailedPhotos.isNotEmpty) {
+        // ABORT SUBMISSION! DO NOT COMMIT TO FIRESTORE! DO NOT CLEAR AUDIT!
+        if (navigator.canPop()) navigator.pop(); // Close upload progress dialog
+
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.cloud_off_rounded, color: Colors.orange, size: 28),
+                SizedBox(width: 10),
+                Text('Upload Incomplete', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${remainingFailedPhotos.length} photo(s) could not be uploaded due to weak or unstable network.',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  '🛡️ All your audit data and photos are safely preserved on this device. '
+                  'No photos have been lost, and successfully uploaded photos won\'t need to be re-uploaded.',
+                  style: TextStyle(fontSize: 13, color: Colors.black87),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Please check your cellular signal or Wi-Fi and tap "Retry Upload Now" to complete your audit submission.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Save & Finish Later'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  // Resumes upload immediately - only failed photos will be uploaded!
+                  _submitFinalAudit();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00897B),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Retry Upload Now', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        return;
       }
 
       // Update status for Firestore operations
@@ -766,95 +890,104 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     }
   }
 
-  /// Upload a single photo with retry logic and exponential backoff
-  Future<String?> _uploadPhotoWithRetry(String path, String taskId, {int maxRetries = 3}) async {
+  /// Safely resolves a local photo file path, including container changes on app updates/restarts
+  Future<File?> _resolvePhotoFile(String path) async {
+    if (kIsWeb) return null;
+    try {
+      final directFile = File(path);
+      if (await directFile.exists()) {
+        return directFile;
+      }
+      final appDir = await getApplicationDocumentsDirectory();
+      final baseName = p.basename(path);
+      final fallbackFile = File(p.join(appDir.path, baseName));
+      if (await fallbackFile.exists()) {
+        return fallbackFile;
+      }
+    } catch (e) {
+      debugPrint('Error resolving photo file: $e');
+    }
+    return null;
+  }
+
+  /// Upload a single photo with resilient retry logic, deterministic path, and exponential backoff
+  Future<String?> _uploadPhotoWithRetry(
+    String path, 
+    String taskId, {
+    int maxRetries = 5,
+    String photoType = 'task',
+    void Function(String)? onStatusUpdate,
+  }) async {
+    // If it's already a URL, return it immediately
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+
+    // Clean site and turbine names for a neat, stable storage path
+    final cleanSite = widget.siteName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final cleanTurbine = widget.turbineName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final baseName = p.basenameWithoutExtension(path);
+    // Deterministic storage path ensures resumability and clean overwrites across retries
+    final storagePath = 'audit_images/${cleanSite}_$cleanTurbine/${taskId}_${photoType}_$baseName.jpg';
+    final ref = FirebaseStorage.instance.ref().child(storagePath);
+
+    File? resolvedFile;
+    if (!kIsWeb) {
+      resolvedFile = await _resolvePhotoFile(path);
+      if (resolvedFile == null || !await resolvedFile.exists()) {
+        debugPrint('❌ Photo file does not exist locally: $path');
+        return null;
+      }
+      final fileSize = await resolvedFile.length();
+      if (fileSize == 0) {
+        debugPrint('❌ Photo file is empty (0 bytes): $path');
+        return null;
+      }
+    }
+
     for (var attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Add random component to filename to prevent collisions
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.hashCode}.jpg';
-        final storagePath = 'audit_images/$fileName';
-        final ref = FirebaseStorage.instance.ref().child(storagePath);
-        
-        debugPrint('🔄 Upload attempt $attempt for: $path');
-        
+        debugPrint('🔄 Upload attempt $attempt/$maxRetries for: $path');
+        onStatusUpdate?.call('Uploading (Attempt $attempt)...');
+
         if (kIsWeb) {
-          // Web: Upload file bytes to Firebase Storage
           final xFile = XFile(path);
-          
-          Uint8List fileBytes;
-          try {
-            fileBytes = await xFile.readAsBytes();
-            debugPrint('📊 File size (web): ${fileBytes.length} bytes');
-          } catch (readErr) {
-            debugPrint('❌ Error reading file (Dead Blob?): $readErr');
-            return null; 
-          }
-          
+          final fileBytes = await xFile.readAsBytes().timeout(const Duration(seconds: 15));
           final uploadTask = ref.putData(
             fileBytes,
             SettableMetadata(contentType: 'image/jpeg'),
           );
-          
-          // Wait for upload and check result
-          final snapshot = await uploadTask;
-          debugPrint('📦 Upload state: ${snapshot.state}');
-          
+          final snapshot = await uploadTask.timeout(const Duration(seconds: 60));
           if (snapshot.state != TaskState.success) {
-            debugPrint('❌ Upload did not succeed. State: ${snapshot.state}');
-            continue; // Retry
+            debugPrint('❌ Web upload not success. State: ${snapshot.state}');
+            continue;
           }
         } else {
-          // Mobile: Upload file to Firebase Storage
-          final file = File(path);
-          if (await file.exists()) {
-            final fileSize = await file.length();
-            debugPrint('📤 Uploading file: $path ($fileSize bytes)');
-            
-            if (fileSize == 0) {
-              debugPrint('❌ File is empty (0 bytes): $path');
-              return null;
-            }
-            
-            final uploadTask = ref.putFile(file);
-            
-            // Wait for upload and check result
-            final snapshot = await uploadTask;
-            debugPrint('📦 Upload state: ${snapshot.state}, bytes transferred: ${snapshot.bytesTransferred}');
-            
-            if (snapshot.state != TaskState.success) {
-              debugPrint('❌ Upload did not succeed. State: ${snapshot.state}');
-              continue; // Retry
-            }
-            
-            if (snapshot.bytesTransferred == 0) {
-              debugPrint('❌ Zero bytes transferred for: $path');
-              continue; // Retry
-            }
-            
-            debugPrint('✅ Upload completed: ${snapshot.bytesTransferred} bytes transferred');
-          } else {
-            debugPrint('❌ File does not exist: $path');
-            return null; // File doesn't exist, no point retrying
+          final uploadTask = ref.putFile(
+            resolvedFile!,
+            SettableMetadata(contentType: 'image/jpeg'),
+          );
+          final snapshot = await uploadTask.timeout(const Duration(seconds: 60));
+          if (snapshot.state != TaskState.success || snapshot.bytesTransferred == 0) {
+            debugPrint('❌ Mobile upload not success. State: ${snapshot.state}, bytes: ${snapshot.bytesTransferred}');
+            continue;
           }
         }
-        
-        // Get download URL
-        final downloadUrl = await ref.getDownloadURL();
-        debugPrint('🔗 Download URL obtained: ${downloadUrl.substring(0, 50)}...');
+
+        // Fetch download URL with timeout
+        final downloadUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 30));
+        debugPrint('✅ Photo uploaded successfully: $storagePath -> ${downloadUrl.substring(0, min(50, downloadUrl.length))}...');
         return downloadUrl;
-        
-      } catch (e, stackTrace) {
-        debugPrint('⚠️ Upload attempt $attempt failed for task $taskId');
-        debugPrint('   Error type: ${e.runtimeType}');
-        debugPrint('   Error message: $e');
-        debugPrint('   Stack trace: ${stackTrace.toString().split('\n').take(3).join('\n')}');
-        
+
+      } catch (e) {
+        debugPrint('⚠️ Upload attempt $attempt failed for $path: $e');
         if (attempt == maxRetries) {
-          debugPrint('❌ Failed to upload after $maxRetries attempts');
+          debugPrint('❌ Failed to upload after $maxRetries attempts: $path');
           return null;
         }
-        // Exponential backoff: 500ms, 1000ms, 2000ms...
-        await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
+        // Adaptive exponential backoff: 1s, 2s, 4s, 8s, 12s
+        final delayMs = min(12000, 1000 * (1 << (attempt - 1)));
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
       }
     }
     return null;
