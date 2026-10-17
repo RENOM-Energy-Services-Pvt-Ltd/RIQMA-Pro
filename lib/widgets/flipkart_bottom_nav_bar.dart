@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -246,12 +247,18 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
 
             // Spatially optimized capsule: leaves 5px on each side of the tab
             const indicatorPaddingH = 5.0;
-            final indicatorWidth = tabWidth - (indicatorPaddingH * 2);
+            final baseIndicatorWidth = tabWidth - (indicatorPaddingH * 2);
             final indicatorHeight = widget.height - 10.0;
 
-            // Horizontal position of the sliding indicator
+            // Fluid sinusoidal elastic stretch between tabs
+            final fractionalDistance = (_currentProgress % 1.0);
+            final stretchFactor = math.sin(fractionalDistance * math.pi).abs();
+            final dynamicStretch = stretchFactor * 14.0;
+            final indicatorWidth = baseIndicatorWidth + dynamicStretch;
+
+            // Horizontal position of the sliding indicator centered with dynamic stretch
             final indicatorLeft =
-                (_currentProgress * tabWidth) + indicatorPaddingH;
+                (_currentProgress * tabWidth) + indicatorPaddingH - (dynamicStretch / 2);
 
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -319,6 +326,30 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                           ),
                         ),
 
+                        // Ambient Neon Underglow Light
+                        Positioned(
+                          left: indicatorLeft + (indicatorWidth * 0.1),
+                          top: (widget.height - indicatorHeight) / 2 + 2,
+                          width: indicatorWidth * 0.8,
+                          height: indicatorHeight - 4,
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(22),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: activeColor.withValues(
+                                      alpha: isDark ? 0.48 : 0.30,
+                                    ),
+                                    blurRadius: _isDragging ? 22 : 16,
+                                    spreadRadius: _isDragging ? 3 : 1.5,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                         // Sliding Smart Pure Glass Capsule
                         Positioned(
                           left: indicatorLeft,
@@ -337,16 +368,16 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                                   end: Alignment.bottomRight,
                                   colors: isDark
                                       ? [
-                                          Colors.white.withValues(alpha: 0.28),
-                                          Colors.white.withValues(alpha: 0.08),
-                                          activeColor.withValues(alpha: 0.24),
+                                          Colors.white.withValues(alpha: 0.32),
+                                          Colors.white.withValues(alpha: 0.10),
+                                          activeColor.withValues(alpha: 0.32),
                                         ]
                                       : [
-                                          Colors.white.withValues(alpha: 0.95),
-                                          Colors.white.withValues(alpha: 0.45),
-                                          activeColor.withValues(alpha: 0.16),
+                                          Colors.white.withValues(alpha: 0.98),
+                                          Colors.white.withValues(alpha: 0.60),
+                                          activeColor.withValues(alpha: 0.22),
                                         ],
-                                  stops: const [0.0, 0.45, 1.0],
+                                  stops: const [0.0, 0.42, 1.0],
                                 ),
                                 border: Border.all(
                                   color: isDark
@@ -413,47 +444,63 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
                               proximity,
                             )!;
 
-                            final scale = 1.0 + (0.05 * proximity);
+                            final curvedProximity = Curves.easeOutBack.transform(proximity);
+                            // 3D vertical lift & spring scale
+                            final iconOffsetY = -2.2 * proximity;
+                            final iconScale = 1.0 + (0.14 * curvedProximity);
                             final isSelected = proximity > 0.5;
 
                             return Expanded(
-                              child: Transform.scale(
-                                scale: scale,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        (proximity > 0.6 && item.activeIcon != null)
-                                            ? item.activeIcon
-                                            : item.icon,
-                                        size: 22,
-                                        color: itemColor,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Transform.translate(
+                                      offset: Offset(0, iconOffsetY),
+                                      child: Transform.scale(
+                                        scale: iconScale,
+                                        child: Icon(
+                                          (proximity > 0.6 && item.activeIcon != null)
+                                              ? item.activeIcon
+                                              : item.icon,
+                                          size: 22,
+                                          color: itemColor,
+                                          shadows: isSelected
+                                              ? [
+                                                  Shadow(
+                                                    color: activeColor.withValues(
+                                                      alpha: isDark ? 0.65 : 0.40,
+                                                    ),
+                                                    blurRadius: 10,
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                                          child: Text(
-                                            item.label,
-                                            maxLines: 1,
-                                            softWrap: false,
-                                            style: TextStyle(
-                                              fontSize: 11.0,
-                                              fontWeight: isSelected
-                                                  ? FontWeight.w700
-                                                  : FontWeight.w500,
-                                              color: itemColor,
-                                              letterSpacing: -0.2,
-                                            ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                        child: Text(
+                                          item.label,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          style: TextStyle(
+                                            fontSize: 11.0,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                            color: itemColor,
+                                            letterSpacing: isSelected ? -0.1 : -0.2,
                                           ),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             );

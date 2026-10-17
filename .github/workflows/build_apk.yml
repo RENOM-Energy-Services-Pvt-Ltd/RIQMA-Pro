@@ -60,14 +60,15 @@ jobs:
           name: RIQMA Pro ${{ steps.get_version.outputs.tag }}
           body: |
             ### RIQMA Pro ${{ steps.get_version.outputs.tag }} Update
-            - Fix: Simultaneous batch loading for audit categories (all cards load together, no partial skeleton loaders)
+            - Next-Gen Interactive Bottom Navigation Bar:
+              * Elastic liquid pill stretch during tab transitions & drag
+              * Ambient neon underglow aura & optical glass reflection
+              * Bouncy 3D icon pop with elastic spring physics & luminescence
+            - Direct In-App 1-Click Update System
+            - Fix: Simultaneous batch loading for audit categories
             - Performance: Parallelized Firestore queries via Future.wait
             - Fast in-memory counter refresh on navigation without skeleton flickering
-            - In-App 1-Click Direct Update with System Package Installer
-            - Pre-install Unknown App Sources Permission Check & Auto-Redirect to Settings
-            - Auto-resume update on returning from settings without re-downloading APK
-            - Flipkart-style draggable and animated bottom navigation bar
-            - State & Regional Planning Restrictions
+            - Dual Authentication: Firebase Auth with Renom Server fallback
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false
           prerelease: false
