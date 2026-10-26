@@ -14,6 +14,7 @@ import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/activity_log_service.dart';
+import 'services/app_update_service.dart';
 import 'services/notification_service.dart';
 import 'services/renom_auth_service.dart';
 
@@ -61,9 +62,10 @@ Future<void> main() async {
   // 5. Initialize Renom Auth Session
   await RenomAuthService.instance.init();
 
-  // 5. Initialize services (Moved to Splash Screen to avoid blocking UI)
-  
-  // 6. Run App
+  // 6. Clean any stale downloaded update APKs from cache
+  AppUpdateService.instance.cleanOldApks();
+
+  // 7. Run App
   runApp(
     MultiProvider(
       providers: [

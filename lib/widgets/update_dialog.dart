@@ -5,8 +5,8 @@ class UpdateDialog extends StatefulWidget {
   final AppUpdateInfo updateInfo;
 
   const UpdateDialog({
-    super.key,
     required this.updateInfo,
+    super.key,
   });
 
   /// Static helper to display the dialog
@@ -46,7 +46,14 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
 
   Future<void> _checkInitialState() async {
     try {
-      final downloaded = await AppUpdateService.instance.hasDownloadedApk();
+      // 1. Clean stale/old APKs right away so any obsolete riqma_update.apk is wiped
+      await AppUpdateService.instance.cleanOldApks(
+        keepVersion: widget.updateInfo.latestVersion,
+      );
+
+      final downloaded = await AppUpdateService.instance.hasDownloadedApk(
+        targetVersion: widget.updateInfo.latestVersion,
+      );
       final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
       if (mounted) {
         setState(() {
@@ -78,9 +85,11 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
 
     // If permission was granted and APK is downloaded, automatically launch installer!
     if (canInstall) {
-      final downloaded = await AppUpdateService.instance.hasDownloadedApk();
+      final downloaded = await AppUpdateService.instance.hasDownloadedApk(
+        targetVersion: widget.updateInfo.latestVersion,
+      );
       if (downloaded && !_isDownloading && !_isInstalling) {
-        _installDownloadedApk();
+        await _installDownloadedApk();
       }
     }
   }
@@ -106,7 +115,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
         return;
       }
 
-      await AppUpdateService.instance.installDownloadedApk();
+      await AppUpdateService.instance.installDownloadedApk(widget.updateInfo.latestVersion);
       if (mounted) {
         setState(() {
           _isInstalling = false;
@@ -159,7 +168,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
     await _startDownload();
   }
 
-  Future<void> _startDownload() async {
+  Future<void> _startDownload({bool force = false}) async {
     setState(() {
       _isDownloading = true;
       _errorMessage = null;
@@ -168,8 +177,13 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
     });
 
     try {
+      if (force) {
+        await AppUpdateService.instance.cleanOldApks();
+      }
+
       await AppUpdateService.instance.downloadAndInstall(
         apkUrl: widget.updateInfo.apkUrl,
+        targetVersion: widget.updateInfo.latestVersion,
         onProgress: (progress, received, total) {
           if (!mounted) return;
           final receivedMb = (received / (1024 * 1024)).toStringAsFixed(1);
@@ -476,13 +490,24 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
                         )
                       : Text(
                           _needsPermission
-                              ? (_hasDownloadedApk ? "I've Enabled It - Install Now" : "Enable & Update")
+                              ? (_hasDownloadedApk ? "I've Enabled It - Install Now" : 'Enable & Update')
                               : (_hasDownloadedApk
                                   ? 'Install Now'
                                   : (_errorMessage != null ? 'Retry Download' : 'Update Now')),
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                 ),
+                if (_hasDownloadedApk && !_isInstalling) ...[
+                  const SizedBox(height: 6),
+                  TextButton.icon(
+                    onPressed: () => _startDownload(force: true),
+                    icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF00897B)),
+                    label: const Text(
+                      'Re-download (Fresh File)',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF00897B), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
                 if (!widget.updateInfo.forceUpdate) ...[
                   const SizedBox(height: 8),
                   TextButton(

@@ -74,23 +74,66 @@ class AppUpdateService {
     }
   }
 
-  /// Get the cached downloaded APK file
-  Future<File> getDownloadedApkFile() async {
+  /// Get the cached downloaded APK file for a specific target version
+  Future<File> getDownloadedApkFile([String? version]) async {
     final tempDir = await getTemporaryDirectory();
-    return File('${tempDir.path}/riqma_update.apk');
+    final cleanVersion = (version ?? '').replaceAll('v', '').trim();
+    final fileName = cleanVersion.isNotEmpty
+        ? 'riqma_update_v$cleanVersion.apk'
+        : 'riqma_update.apk';
+    return File('${tempDir.path}/$fileName');
   }
 
-  /// Check if the APK has already been downloaded to cache
-  Future<bool> hasDownloadedApk() async {
-    final file = await getDownloadedApkFile();
-    return await file.exists();
+  /// Clean obsolete/stale update APK files from cache
+  Future<void> cleanOldApks({String? keepVersion}) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final dir = Directory(tempDir.path);
+      if (await dir.exists()) {
+        final cleanKeep = (keepVersion ?? '').replaceAll('v', '').trim();
+        final keepFileName = cleanKeep.isNotEmpty ? 'riqma_update_v$cleanKeep.apk' : null;
+        await for (final entity in dir.list()) {
+          if (entity is File && entity.path.contains('riqma_update')) {
+            if (keepFileName == null || !entity.path.endsWith(keepFileName)) {
+              try {
+                await entity.delete();
+                debugPrint('AppUpdateService: Deleted stale APK: ${entity.path}');
+              } catch (e) {
+                debugPrint('AppUpdateService: Error deleting ${entity.path}: $e');
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AppUpdateService: cleanOldApks failed: $e');
+    }
+  }
+
+  /// Check if the APK for the SPECIFIC target version has already been fully downloaded
+  Future<bool> hasDownloadedApk({required String targetVersion}) async {
+    try {
+      final file = await getDownloadedApkFile(targetVersion);
+      if (!await file.exists()) return false;
+      final size = await file.length();
+      // An APK is at least 20MB. If smaller, it was interrupted.
+      if (size < 20 * 1024 * 1024) {
+        try {
+          await file.delete();
+        } catch (_) {}
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Installs an already-downloaded APK after verifying permissions
-  Future<void> installDownloadedApk() async {
-    final file = await getDownloadedApkFile();
+  Future<void> installDownloadedApk(String targetVersion) async {
+    final file = await getDownloadedApkFile(targetVersion);
     if (!await file.exists()) {
-      throw Exception('Downloaded update file not found.');
+      throw Exception('Downloaded update file not found for version $targetVersion.');
     }
 
     // 1. Verify Permission
@@ -236,11 +279,14 @@ class AppUpdateService {
   /// Downloads APK directly and launches Android Package Installer
   Future<void> downloadAndInstall({
     required String apkUrl,
+    required String targetVersion,
     required void Function(double progress, int receivedBytes, int totalBytes) onProgress,
   }) async {
+    // 1. Clean old APKs from cache first
+    await cleanOldApks(keepVersion: targetVersion);
+
     final client = http.Client();
-    final tempDir = await getTemporaryDirectory();
-    final apkFile = File('${tempDir.path}/riqma_update.apk');
+    final apkFile = await getDownloadedApkFile(targetVersion);
 
     try {
       final request = http.Request('GET', Uri.parse(apkUrl));
