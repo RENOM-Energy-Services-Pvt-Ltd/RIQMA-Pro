@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
@@ -60,7 +61,10 @@ Future<ImageSource?> _selectPhotoSource(BuildContext ctx) async {
   );
 }
 
-/// Snappy page scroll physics that settles at double the speed of default PageScrollPhysics
+/// Snappy page scroll physics that settles quickly with ZERO pendulum bounce.
+/// - Normal swipe: precisely 1 page switch.
+/// - Fast flick (>2800 px/s): 2 pages switch.
+/// - Ultra-fast fling (>5000 px/s): 3 pages switch.
 class FastPageScrollPhysics extends PageScrollPhysics {
   const FastPageScrollPhysics({super.parent});
 
@@ -69,12 +73,77 @@ class FastPageScrollPhysics extends PageScrollPhysics {
     return FastPageScrollPhysics(parent: buildParent(ancestor));
   }
 
+  // Critically overdamped spring: damping ratio = 23 / (2 * sqrt(0.5 * 220)) = 1.096 (>= 1.0)
+  // This physically guarantees ZERO overshoot, ZERO oscillation, and ZERO pendulum bounce.
   @override
   SpringDescription get spring => const SpringDescription(
-    mass: 40,
-    stiffness: 350,
-    damping: 1.2,
+    mass: 0.5,
+    stiffness: 220.0,
+    damping: 23.0,
   );
+
+  @override
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
+    // If out of range (overscroll at edge), let parent handle bounce
+    if ((velocity <= 0.0 && position.pixels <= position.minScrollExtent) ||
+        (velocity >= 0.0 && position.pixels >= position.maxScrollExtent)) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+
+    final double pageWidth = position.viewportDimension;
+    if (pageWidth <= 0) return super.createBallisticSimulation(position, velocity);
+
+    final Tolerance tolerance = toleranceFor(position);
+    final double currentPage = position.pixels / pageWidth;
+    final double absVelocity = velocity.abs();
+
+    double targetPage;
+
+    if (absVelocity < tolerance.velocity || absVelocity < 200.0) {
+      // Very slow / drag release: snap to nearest page (>50% goes to next, <50% snaps back)
+      targetPage = currentPage.roundToDouble();
+    } else {
+      // Swipe with velocity:
+      // Normal swipe -> exactly 1 page
+      // Fast swipe (> 2800 px/s) -> 2 pages
+      // Ultra-fast swipe (> 5000 px/s) -> 3 pages
+      int pageDelta = 1;
+      if (absVelocity > 5000.0) {
+        pageDelta = 3;
+      } else if (absVelocity > 2800.0) {
+        pageDelta = 2;
+      } else {
+        pageDelta = 1;
+      }
+
+      if (velocity > 0) {
+        // Forward swipe
+        targetPage = (currentPage.floor() + pageDelta).toDouble();
+      } else {
+        // Backward swipe
+        targetPage = (currentPage.ceil() - pageDelta).toDouble();
+      }
+    }
+
+    // Clamp within valid min and max page indices
+    final double minPage = (position.minScrollExtent / pageWidth).roundToDouble();
+    final double maxPage = (position.maxScrollExtent / pageWidth).roundToDouble();
+    targetPage = targetPage.clamp(minPage, maxPage);
+
+    final double targetPixels = targetPage * pageWidth;
+
+    if ((targetPixels - position.pixels).abs() < 0.5) {
+      return null;
+    }
+
+    return ScrollSpringSimulation(
+      spring,
+      position.pixels,
+      targetPixels,
+      velocity,
+      tolerance: tolerance,
+    );
+  }
 }
 
 class AuditTaskScreen extends StatefulWidget {
@@ -99,10 +168,10 @@ class AuditTaskScreen extends StatefulWidget {
 
 class _AuditTaskScreenState extends State<AuditTaskScreen> {
   final PageController _pageController = PageController();
+  final ValueNotifier<bool> _isPageScrolling = ValueNotifier<bool>(false);
   int _currentPage = 0;
   int _totalDocs = 0;
   bool _hasJumpedToInitialTask = false;
-  bool _isPageScrolling = false;
 
   // Store answers by task ID
   // Structure: { 'taskId': { 'status': 'OK'/'Not OK', 'observation': '...', 'remarks': '...', 'photos': ['path1', 'path2'] } }
@@ -169,6 +238,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   @override
   void dispose() {
     _pageController.dispose();
+    _isPageScrolling.dispose();
     super.dispose();
   }
 
@@ -373,7 +443,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   void _nextPage() {
-    if (_isPageScrolling) return;
+    if (_isPageScrolling.value) return;
     if (!_validateTask()) return;
 
     if (_currentPage < _totalDocs - 1) {
@@ -402,7 +472,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   void _previousPage() {
-    if (_isPageScrolling) return;
+    if (_isPageScrolling.value) return;
     if (_currentPage > 0) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 150),
@@ -413,9 +483,17 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // Soft grey-blue background
-      body: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA), // Soft grey-blue background
+        body: Column(
         children: [
           Container(
             padding: EdgeInsets.only(
@@ -528,17 +606,9 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                   onNotification: (notification) {
                     if (notification.metrics.axis == Axis.horizontal) {
                       if (notification is ScrollStartNotification) {
-                        if (!_isPageScrolling) {
-                          setState(() {
-                            _isPageScrolling = true;
-                          });
-                        }
+                        _isPageScrolling.value = true;
                       } else if (notification is ScrollEndNotification) {
-                        if (_isPageScrolling) {
-                          setState(() {
-                            _isPageScrolling = false;
-                          });
-                        }
+                        _isPageScrolling.value = false;
                       }
                     }
                     return false;
@@ -677,8 +747,9 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class TaskPageItem extends StatefulWidget {
@@ -691,7 +762,7 @@ class TaskPageItem extends StatefulWidget {
   final void Function(String photoPath) onRemovePhoto;
   final DocumentReference turbineModelRef;
   final String? draftId;
-  final bool isPageScrolling;
+  final ValueListenable<bool>? isPageScrolling;
 
   const TaskPageItem({
     required this.taskData,
@@ -703,7 +774,7 @@ class TaskPageItem extends StatefulWidget {
     required this.onRemovePhoto,
     required this.turbineModelRef,
     this.draftId,
-    this.isPageScrolling = false,
+    this.isPageScrolling,
     super.key,
   });
 
@@ -841,7 +912,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           widget.onAnswerChanged('status', 'OK');
                           widget.onAnswerChanged('sub_status', null);
                         },
-                        isEnabled: !widget.isPageScrolling,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -857,7 +927,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                               color: const Color(0xFFD32F2F), // Sharp vibrant red
                               icon: Icons.cancel_outlined,
                               onTap: () => widget.onAnswerChanged('status', 'Not OK'),
-                              isEnabled: !widget.isPageScrolling,
                             ),
                           ),
                           if (widget.initialAnswer['is_corrected'] == true)
@@ -904,7 +973,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           widget.onAnswerChanged('status', 'NA');
                           widget.onAnswerChanged('sub_status', null);
                         },
-                        isEnabled: !widget.isPageScrolling,
                       ),
                     ),
                   ],
@@ -922,7 +990,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.warning_amber_rounded,
                           onTap: () => widget.onAnswerChanged('sub_status', 'Aobs'),
                           compact: true,
-                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -934,7 +1001,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.info_outline,
                           onTap: () => widget.onAnswerChanged('sub_status', 'MCF'),
                           compact: true,
-                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -946,7 +1012,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.error_outline,
                           onTap: () => widget.onAnswerChanged('sub_status', 'CF'),
                           compact: true,
-                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                     ],
@@ -1330,54 +1395,65 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     required IconData icon,
     required VoidCallback onTap,
     bool compact = false,
-    bool isEnabled = true,
   }) {
-    return IgnorePointer(
-      ignoring: !isEnabled,
-      child: InkWell(
-        onTap: isEnabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
-          decoration: BoxDecoration(
-            color: isSelected ? color : Theme.of(context).cardColor,
-            border: Border.all(
-              color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1), 
-              width: isSelected ? 2 : 1,
+    final button = InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Theme.of(context).cardColor,
+          border: Border.all(
+            color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1), 
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            )
+          ] : null,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : Colors.grey[500],
+              size: compact ? 18 : 24,
             ),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: isSelected ? [
-              BoxShadow(
-                color: color.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              )
-            ] : null,
-          ),
-          child: Column(
-            children: [
-              Icon(
-                icon,
-                color: isSelected ? Colors.white : Colors.grey[500],
-                size: compact ? 18 : 24,
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                fontSize: compact ? 11 : 13,
+                fontFamily: 'Outfit',
+                letterSpacing: 0.5,
               ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                  fontSize: compact ? 11 : 13,
-                  fontFamily: 'Outfit',
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+
+    if (widget.isPageScrolling != null) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: widget.isPageScrolling!,
+        builder: (context, isScrolling, child) {
+          return IgnorePointer(
+            ignoring: isScrolling,
+            child: child,
+          );
+        },
+        child: button,
+      );
+    }
+
+    return button;
   }
 
   /// Compresses the closure photo locally and returns the local file path.

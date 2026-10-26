@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import '../widgets/network_stability_dialog.dart';
 
@@ -73,6 +74,13 @@ class AuditorSelfReviewScreen extends StatelessWidget {
             backgroundColor: const Color(0xFF00897B),
             foregroundColor: Colors.white,
             elevation: 0,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            ),
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: false, // Ensure title doesn't crash with back button
               titlePadding: const EdgeInsets.only(left: 56, bottom: 16),

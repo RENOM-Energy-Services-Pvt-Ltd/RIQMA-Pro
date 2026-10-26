@@ -47,7 +47,7 @@ class FlipkartBottomNavBar extends StatefulWidget {
     this.indicatorColor,
     this.backgroundColor,
     this.height = 64.0,
-    this.showHomeIndicator = true,
+    this.showHomeIndicator = false,
   }) : assert(items.length >= 2, 'FlipkartBottomNavBar requires at least 2 items');
 
   @override
@@ -514,24 +514,6 @@ class _FlipkartBottomNavBarState extends State<FlipkartBottomNavBar>
             );
           },
         ),
-
-        // 2. iPhone Home Indicator Bar (Centered at Bottom)
-        if (widget.showHomeIndicator) ...[
-          const SizedBox(height: 8),
-          Center(
-            child: Container(
-              width: 136,
-              height: 4.5,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.35)
-                    : Colors.black.withValues(alpha: 0.28),
-                borderRadius: BorderRadius.circular(100),
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-        ],
       ],
     );
   }

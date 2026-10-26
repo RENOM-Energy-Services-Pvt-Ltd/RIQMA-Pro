@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/audit_manager.dart';
 import '../../services/renom_master_data_service.dart';
@@ -320,6 +321,13 @@ class _UnplannedAuditScreenState extends State<UnplannedAuditScreen> {
         elevation: 0,
         backgroundColor: const Color(0xFF00897B),
         foregroundColor: Colors.white,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
         title: const Text(
           'Unplanned Audit',
           style: TextStyle(fontWeight: FontWeight.w600),

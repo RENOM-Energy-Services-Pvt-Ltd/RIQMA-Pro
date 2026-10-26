@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Main Splash Screen Widget
 class WindFarmSplash extends StatefulWidget {
@@ -131,8 +132,16 @@ class _WindFarmSplashState extends State<WindFarmSplash> with TickerProviderStat
     final offsetX = (size.width - scaledWidth) / 2;
     final offsetY = (size.height - scaledHeight) / 2;
 
-    return Scaffold(
-      body: Stack(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        body: Stack(
         fit: StackFit.expand,
         children: [
           // A. Sky (Background) - Fills entire screen independently
@@ -170,8 +179,9 @@ class _WindFarmSplashState extends State<WindFarmSplash> with TickerProviderStat
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
 }
 

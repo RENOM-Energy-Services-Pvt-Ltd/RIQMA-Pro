@@ -30,12 +30,14 @@ Future<void> main() async {
   // 1. This MUST be the first line
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set system UI overlay style so status bar icons are dark on light backgrounds
+  // Set system UI overlay style so status bar icons are dark on light backgrounds and nav bar is native
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
   
@@ -112,6 +114,8 @@ class MyApp extends StatelessWidget {
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.dark,
             statusBarBrightness: Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
           ),
         ),
         colorScheme: ColorScheme.fromSeed(
@@ -135,6 +139,8 @@ class MyApp extends StatelessWidget {
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.light,
             statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
           ),
         ),
         colorScheme: ColorScheme.fromSeed(

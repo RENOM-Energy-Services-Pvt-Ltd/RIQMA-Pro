@@ -210,17 +210,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
       appBar: AppBar(
         elevation: 0,
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFF1E1E1E)
+            : Colors.white,
+        foregroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white
+            : Colors.black,
         centerTitle: false,
         systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
             ? const SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.light,
                 statusBarBrightness: Brightness.dark,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarIconBrightness: Brightness.light,
               )
             : const SystemUiOverlayStyle(
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: Brightness.dark,
                 statusBarBrightness: Brightness.light,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarIconBrightness: Brightness.dark,
               ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
@@ -274,6 +284,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
           child: FlipkartBottomNavBar(
+            showHomeIndicator: false,
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,
             items: const [
