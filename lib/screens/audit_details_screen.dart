@@ -58,8 +58,6 @@ class AuditDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-        elevation: 1,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
