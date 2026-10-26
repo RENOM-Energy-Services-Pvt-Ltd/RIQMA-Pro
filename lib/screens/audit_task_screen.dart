@@ -60,6 +60,23 @@ Future<ImageSource?> _selectPhotoSource(BuildContext ctx) async {
   );
 }
 
+/// Snappy page scroll physics that settles at double the speed of default PageScrollPhysics
+class FastPageScrollPhysics extends PageScrollPhysics {
+  const FastPageScrollPhysics({super.parent});
+
+  @override
+  FastPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return FastPageScrollPhysics(parent: buildParent(ancestor));
+  }
+
+  @override
+  SpringDescription get spring => const SpringDescription(
+    mass: 40,
+    stiffness: 350,
+    damping: 1.2,
+  );
+}
+
 class AuditTaskScreen extends StatefulWidget {
   final String subCategoryName;
   final DocumentReference subCategoryRef;
@@ -85,6 +102,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   int _currentPage = 0;
   int _totalDocs = 0;
   bool _hasJumpedToInitialTask = false;
+  bool _isPageScrolling = false;
 
   // Store answers by task ID
   // Structure: { 'taskId': { 'status': 'OK'/'Not OK', 'observation': '...', 'remarks': '...', 'photos': ['path1', 'path2'] } }
@@ -231,7 +249,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
             final compressedFile = await FlutterImageCompress.compressAndGetFile(
               image.path,
               targetPath,
-              quality: 70,
+              quality: 85,
             );
             if (compressedFile != null && await File(compressedFile.path).exists()) {
               savedPath = compressedFile.path;
@@ -355,12 +373,13 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   void _nextPage() {
+    if (_isPageScrolling) return;
     if (!_validateTask()) return;
 
     if (_currentPage < _totalDocs - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
       );
     } else {
       AuditManager.instance.flush();
@@ -383,10 +402,11 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   }
 
   void _previousPage() {
+    if (_isPageScrolling) return;
     if (_currentPage > 0) {
       _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
       );
     }
   }
@@ -504,48 +524,70 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                   return const Center(child: Text('No tasks found for this category.'));
                 }
 
-                return PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                    });
-                  },
-                  itemCount: tasks.length,
-                  itemBuilder: (context, index) {
-                    final taskDoc = tasks[index];
-                    final taskData = taskDoc.data() as Map<String, dynamic>;
-                    final taskId = taskDoc.id;
-
-                    // Resolve Reference Name
-                    var referenceName = 'N/A';
-                    if (taskData.containsKey('reference_ref') && taskData['reference_ref'] is DocumentReference) {
-                      final refId = (taskData['reference_ref'] as DocumentReference<Object?>).id;
-                      referenceName = _referenceNames[refId] ?? 'Loading...';
-                    } else {
-                      referenceName = taskData['referenceoftask']?.toString() ?? 'N/A';
-                    }
-
-                    return TaskPageItem(
-                      key: ValueKey(taskId),
-                      taskData: taskData,
-                      referenceName: referenceName, // This is already prioritized in the parent via _referenceNames
-                      rootCauses: _rootCauses,
-                      initialAnswer: auditData[taskId] ?? {},
-                      onAnswerChanged: (key, value, {bool shouldSetState = true}) {
-                        _updateAnswer(taskId, key, value, shouldSetState: shouldSetState);
-                        // Ensure category details and reference name are saved
-                        _ensureCategoryDetails(taskId);
-                        if (shouldSetState && auditData[taskId]?['reference_name'] != referenceName) {
-                          _updateAnswer(taskId, 'reference_name', referenceName, shouldSetState: false);
+                return NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification.metrics.axis == Axis.horizontal) {
+                      if (notification is ScrollStartNotification) {
+                        if (!_isPageScrolling) {
+                          setState(() {
+                            _isPageScrolling = true;
+                          });
                         }
-                      },
-                      onCapturePhoto: () => _capturePhoto(taskId),
-                      onRemovePhoto: (path) => _removePhoto(taskId, path),
-                      turbineModelRef: widget.mainCategoryRef, // Using mainCategoryRef as turbineModelRef based on context in AuditTaskScreen
-                      draftId: widget.draftId,
-                    );
+                      } else if (notification is ScrollEndNotification) {
+                        if (_isPageScrolling) {
+                          setState(() {
+                            _isPageScrolling = false;
+                          });
+                        }
+                      }
+                    }
+                    return false;
                   },
+                  child: PageView.builder(
+                    controller: _pageController,
+                    physics: const FastPageScrollPhysics(),
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentPage = index;
+                      });
+                    },
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      final taskDoc = tasks[index];
+                      final taskData = taskDoc.data() as Map<String, dynamic>;
+                      final taskId = taskDoc.id;
+
+                      // Resolve Reference Name
+                      var referenceName = 'N/A';
+                      if (taskData.containsKey('reference_ref') && taskData['reference_ref'] is DocumentReference) {
+                        final refId = (taskData['reference_ref'] as DocumentReference<Object?>).id;
+                        referenceName = _referenceNames[refId] ?? 'Loading...';
+                      } else {
+                        referenceName = taskData['referenceoftask']?.toString() ?? 'N/A';
+                      }
+
+                      return TaskPageItem(
+                        key: ValueKey(taskId),
+                        taskData: taskData,
+                        referenceName: referenceName, // This is already prioritized in the parent via _referenceNames
+                        rootCauses: _rootCauses,
+                        initialAnswer: auditData[taskId] ?? {},
+                        onAnswerChanged: (key, value, {bool shouldSetState = true}) {
+                          _updateAnswer(taskId, key, value, shouldSetState: shouldSetState);
+                          // Ensure category details and reference name are saved
+                          _ensureCategoryDetails(taskId);
+                          if (shouldSetState && auditData[taskId]?['reference_name'] != referenceName) {
+                            _updateAnswer(taskId, 'reference_name', referenceName, shouldSetState: false);
+                          }
+                        },
+                        onCapturePhoto: () => _capturePhoto(taskId),
+                        onRemovePhoto: (path) => _removePhoto(taskId, path),
+                        turbineModelRef: widget.mainCategoryRef, // Using mainCategoryRef as turbineModelRef based on context in AuditTaskScreen
+                        draftId: widget.draftId,
+                        isPageScrolling: _isPageScrolling,
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -649,6 +691,7 @@ class TaskPageItem extends StatefulWidget {
   final void Function(String photoPath) onRemovePhoto;
   final DocumentReference turbineModelRef;
   final String? draftId;
+  final bool isPageScrolling;
 
   const TaskPageItem({
     required this.taskData,
@@ -660,6 +703,7 @@ class TaskPageItem extends StatefulWidget {
     required this.onRemovePhoto,
     required this.turbineModelRef,
     this.draftId,
+    this.isPageScrolling = false,
     super.key,
   });
 
@@ -797,6 +841,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           widget.onAnswerChanged('status', 'OK');
                           widget.onAnswerChanged('sub_status', null);
                         },
+                        isEnabled: !widget.isPageScrolling,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -812,6 +857,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                               color: const Color(0xFFD32F2F), // Sharp vibrant red
                               icon: Icons.cancel_outlined,
                               onTap: () => widget.onAnswerChanged('status', 'Not OK'),
+                              isEnabled: !widget.isPageScrolling,
                             ),
                           ),
                           if (widget.initialAnswer['is_corrected'] == true)
@@ -858,6 +904,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           widget.onAnswerChanged('status', 'NA');
                           widget.onAnswerChanged('sub_status', null);
                         },
+                        isEnabled: !widget.isPageScrolling,
                       ),
                     ),
                   ],
@@ -875,6 +922,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.warning_amber_rounded,
                           onTap: () => widget.onAnswerChanged('sub_status', 'Aobs'),
                           compact: true,
+                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -886,6 +934,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.info_outline,
                           onTap: () => widget.onAnswerChanged('sub_status', 'MCF'),
                           compact: true,
+                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -897,6 +946,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                           icon: Icons.error_outline,
                           onTap: () => widget.onAnswerChanged('sub_status', 'CF'),
                           compact: true,
+                          isEnabled: !widget.isPageScrolling,
                         ),
                       ),
                     ],
@@ -1280,54 +1330,58 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     required IconData icon,
     required VoidCallback onTap,
     bool compact = false,
+    bool isEnabled = true,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
-        decoration: BoxDecoration(
-          color: isSelected ? color : Theme.of(context).cardColor,
-          border: Border.all(
-            color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1), 
-            width: isSelected ? 2 : 1,
+    return IgnorePointer(
+      ignoring: !isEnabled,
+      child: InkWell(
+        onTap: isEnabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
+          decoration: BoxDecoration(
+            color: isSelected ? color : Theme.of(context).cardColor,
+            border: Border.all(
+              color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1), 
+              width: isSelected ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected ? [
+              BoxShadow(
+                color: color.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              )
+            ] : null,
           ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            )
-          ] : null,
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.grey[500],
-              size: compact ? 18 : 24,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                fontSize: compact ? 11 : 13,
-                fontFamily: 'Outfit',
-                letterSpacing: 0.5,
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? Colors.white : Colors.grey[500],
+                size: compact ? 18 : 24,
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                  fontSize: compact ? 11 : 13,
+                  fontFamily: 'Outfit',
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   /// Compresses the closure photo locally and returns the local file path.
-  /// Uses the same compression quality (70) as main observation photos.
+  /// Uses the same compression quality (85) as main observation photos.
   Future<String?> _compressClosurePhotoLocally(XFile imageFile) async {
     try {
       if (kIsWeb) {
@@ -1345,7 +1399,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
         final compressedFile = await FlutterImageCompress.compressAndGetFile(
           imageFile.path,
           targetPath,
-          quality: 70, // Match main observation photo quality
+          quality: 85, // Match main observation photo quality
         );
         if (compressedFile != null && await File(compressedFile.path).exists()) {
           return compressedFile.path;

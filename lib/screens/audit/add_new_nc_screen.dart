@@ -248,7 +248,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
           final compressedFile = await FlutterImageCompress.compressAndGetFile(
             image.path,
             targetPath,
-            quality: 70,
+            quality: 85,
           );
           if (compressedFile != null && await File(compressedFile.path).exists()) {
             savedPath = compressedFile.path;
@@ -297,7 +297,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
         final compressedFile = await FlutterImageCompress.compressAndGetFile(
           imageFile.path,
           targetPath,
-          quality: 70,
+          quality: 85,
         );
         if (compressedFile != null && await File(compressedFile.path).exists()) {
           return compressedFile.path;
