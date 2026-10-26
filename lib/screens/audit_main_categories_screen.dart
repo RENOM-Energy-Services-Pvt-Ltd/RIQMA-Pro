@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/activity_log_service.dart';
 import '../services/audit_manager.dart';
 import '../widgets/audit_card_widget.dart';
+import 'audit/add_new_nc_screen.dart';
 import 'audit_search_screen.dart';
 import 'audit_sub_categories_screen.dart';
 import 'audit_task_screen.dart';
@@ -767,64 +768,76 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         
         if ((status != null && status != 'OK') || isCorrected) {
           try {
-            // Fetch task document to get category info
-            final taskDoc = await FirebaseFirestore.instance
-                .collection('tasks')
-                .doc(taskId)
-                .get();
-            
-            if (taskDoc.exists) {
-              final taskInfo = taskDoc.data()!;
-              final subCategoryRef = taskInfo['sub_categories_ref'] as DocumentReference;
-              final subCategoryDoc = await subCategoryRef.get();
-              
-              var categoryName = 'Unknown';
-              if (subCategoryDoc.exists) {
-                final mainCategoryRef = subCategoryDoc.get('main_categories_ref') as DocumentReference;
-                final mainCategoryDoc = await mainCategoryRef.get();
-                if (mainCategoryDoc.exists) {
-                  categoryName = mainCategoryDoc.get('name') as String;
-                }
-              }
-              
-              // Get the first photo URL if available
-              var evidencePhotoUrl = '';
-              if (taskData.containsKey('photos') && taskData['photos'] is List) {
-                final photos = taskData['photos'] as List;
-                if (photos.isNotEmpty) {
-                  evidencePhotoUrl = photos[0] as String;
-                }
-              }
-              
-              // If batch is full, commit and start a new one
-              if (batchOpCount >= batchLimit) {
-                await batch.commit();
-                batchOpCount = 0;
-              }
+            var categoryName = taskData['main_category_name']?.toString() ?? 'Unknown';
+            var subCategoryName = taskData['sub_category_name']?.toString() ?? '';
+            final checkpointTitle = (taskData['question'] as String?) ?? (taskData['title'] as String?) ?? 'Checkpoint';
 
-              // Add NC to batch
-              final ncDocRef = FirebaseFirestore.instance.collection('ncs').doc();
-              batch.set(ncDocRef, {
-                'audit_ref': auditDocRef.id,
-                'site_ref': widget.siteRef,
-                'site_name': widget.siteName,
-                'turbine_id': widget.turbineName,
-                'category': categoryName,
-                'problem_description': (taskData['observation'] as String?) ?? '',
-                'nc_status': isCorrected ? 'Closed' : 'open',
-                'evidence_photo_url': evidencePhotoUrl,
-                'auditor_id': auditorId,
-                'auditor_name': auditorName,
-                'created_at': FieldValue.serverTimestamp(),
-                // Include OSC details for Closed NCs
-                if (isCorrected) ...{
-                  'closure_remark': (taskData['closure_remark'] as String?) ?? '',
-                  'closure_photo_url': (taskData['closure_photo'] as String?) ?? '',
-                  'closure_date': FieldValue.serverTimestamp(),
+            // Try fetching task document to get category info if available in Firestore
+            try {
+              final taskDoc = await FirebaseFirestore.instance
+                  .collection('tasks')
+                  .doc(taskId)
+                  .get();
+              
+              if (taskDoc.exists) {
+                final taskInfo = taskDoc.data()!;
+                final subCategoryRef = taskInfo['sub_categories_ref'] as DocumentReference;
+                final subCategoryDoc = await subCategoryRef.get();
+                
+                if (subCategoryDoc.exists) {
+                  subCategoryName = (subCategoryDoc.get('name') as String?) ?? subCategoryName;
+                  final mainCategoryRef = subCategoryDoc.get('main_categories_ref') as DocumentReference;
+                  final mainCategoryDoc = await mainCategoryRef.get();
+                  if (mainCategoryDoc.exists) {
+                    categoryName = mainCategoryDoc.get('name') as String;
+                  }
                 }
-              });
-              batchOpCount++;
+              }
+            } catch (fetchErr) {
+              debugPrint('Task doc lookup for $taskId: $fetchErr');
             }
+            
+            // Get the first photo URL if available
+            var evidencePhotoUrl = '';
+            if (taskData.containsKey('photos') && taskData['photos'] is List) {
+              final photos = taskData['photos'] as List;
+              if (photos.isNotEmpty) {
+                evidencePhotoUrl = photos[0] as String;
+              }
+            }
+            
+            // If batch is full, commit and start a new one
+            if (batchOpCount >= batchLimit) {
+              await batch.commit();
+              batchOpCount = 0;
+            }
+
+            // Add NC to batch
+            final ncDocRef = FirebaseFirestore.instance.collection('ncs').doc();
+            batch.set(ncDocRef, {
+              'audit_ref': auditDocRef.id,
+              'site_ref': widget.siteRef,
+              'site_name': widget.siteName,
+              'turbine_id': widget.turbineName,
+              'category': categoryName,
+              'sub_category': subCategoryName,
+              'checkpoint_title': checkpointTitle,
+              'problem_description': (taskData['observation'] as String?) ?? '',
+              'nc_status': isCorrected ? 'Closed' : 'open',
+              'severity': taskData['sub_status'] ?? 'MCF',
+              'evidence_photo_url': evidencePhotoUrl,
+              'auditor_id': auditorId,
+              'auditor_name': auditorName,
+              'created_at': FieldValue.serverTimestamp(),
+              'is_custom_nc': taskData['is_custom_nc'] == true,
+              // Include OSC details for Closed NCs
+              if (isCorrected) ...{
+                'closure_remark': (taskData['closure_remark'] as String?) ?? '',
+                'closure_photo_url': (taskData['closure_photo'] as String?) ?? '',
+                'closure_date': FieldValue.serverTimestamp(),
+              }
+            });
+            batchOpCount++;
           } catch (e) {
             // Log error but don't fail the entire submission
             debugPrint('Error creating NC document for task $taskId: $e');
@@ -1173,7 +1186,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         crossAxisCount: 2,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        childAspectRatio: 1.3, // Wider cards
+        childAspectRatio: 1.02, // Balanced for card height including Add New NC button
       ),
       itemCount: _categories.length,
       itemBuilder: (context, index) {
@@ -1209,6 +1222,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
               ),
             ).then((_) => _recalculateStatsFromLocal());
           },
+          onAddNewNc: () => _openAddNewNcModal(doc),
         );
       },
     );
@@ -1231,7 +1245,7 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         final catId = _categories[i].id;
         final taskIds = results[i];
         _categoryTaskIds[catId] = taskIds;
-        newStats[catId] = _computeStatsFromTaskIds(taskIds, allAnswers);
+        newStats[catId] = _computeStatsFromTaskIds(catId, taskIds, allAnswers);
       }
 
       setState(() {
@@ -1279,11 +1293,12 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     return taskIds;
   }
 
-  /// Fast in-memory calculation of progress from task IDs and local answers.
-  Map<String, int> _computeStatsFromTaskIds(List<String> taskIds, Map<String, dynamic> allAnswers) {
+  /// Fast in-memory calculation of progress from task IDs, local answers, and custom NCs.
+  Map<String, int> _computeStatsFromTaskIds(String categoryId, List<String> taskIds, Map<String, dynamic> allAnswers) {
     var okCount = 0;
     var notOkCount = 0;
     var naCount = 0;
+    var customCount = 0;
 
     for (final taskId in taskIds) {
       if (allAnswers.containsKey(taskId)) {
@@ -1299,8 +1314,27 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
       }
     }
 
+    // Include custom NCs recorded under this category
+    for (final entry in allAnswers.entries) {
+      final taskId = entry.key;
+      if (taskIds.contains(taskId)) continue;
+      final taskData = entry.value as Map<String, dynamic>?;
+      if (taskData == null) continue;
+      if (taskData['main_category_id'] == categoryId) {
+        customCount++;
+        final status = taskData['status'];
+        if (status == 'OK') {
+          okCount++;
+        } else if (status == 'Not OK') {
+          notOkCount++;
+        } else if (status == 'NA') {
+          naCount++;
+        }
+      }
+    }
+
     return {
-      'total': taskIds.length,
+      'total': taskIds.length + customCount,
       'ok': okCount,
       'notOk': notOkCount,
       'na': naCount,
@@ -1312,9 +1346,32 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     final allAnswers = AuditManager.instance.getAllAnswers();
     setState(() {
       for (final entry in _categoryTaskIds.entries) {
-        _categoryStats[entry.key] = _computeStatsFromTaskIds(entry.value, allAnswers);
+        _categoryStats[entry.key] = _computeStatsFromTaskIds(entry.key, entry.value, allAnswers);
       }
     });
+  }
+
+  /// Opens the "Add New NC" bottom sheet for a specific main category.
+  void _openAddNewNcModal(QueryDocumentSnapshot mainCategoryDoc) {
+    final uniqueDraftId = '${widget.planId ?? "unplanned"}_${widget.turbineId}';
+    final mainCategoryData = mainCategoryDoc.data() as Map<String, dynamic>;
+    final mainCategoryName = (mainCategoryData['name'] as String?) ?? 'Unknown';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _AddNewNcBottomSheet(
+        mainCategoryName: mainCategoryName,
+        mainCategoryRef: mainCategoryDoc.reference,
+        turbineModelRef: widget.turbineModelRef,
+        turbineId: widget.turbineId,
+        draftId: uniqueDraftId,
+        onCheckpointCreated: () {
+          _recalculateStatsFromLocal();
+        },
+      ),
+    );
   }
 
 
@@ -1566,5 +1623,438 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
       }
     }
     return pendingTasks;
+  }
+}
+
+class _AddNewNcBottomSheet extends StatefulWidget {
+  final String mainCategoryName;
+  final DocumentReference mainCategoryRef;
+  final DocumentReference turbineModelRef;
+  final String? turbineId;
+  final String? draftId;
+  final VoidCallback onCheckpointCreated;
+
+  const _AddNewNcBottomSheet({
+    required this.mainCategoryName,
+    required this.mainCategoryRef,
+    required this.turbineModelRef,
+    required this.onCheckpointCreated,
+    this.turbineId,
+    this.draftId,
+  });
+
+  @override
+  State<_AddNewNcBottomSheet> createState() => _AddNewNcBottomSheetState();
+}
+
+class _AddNewNcBottomSheetState extends State<_AddNewNcBottomSheet> {
+  bool _isLoading = true;
+  List<QueryDocumentSnapshot> _subCategories = [];
+  Map<String, String> _subCatReferences = {};
+  QueryDocumentSnapshot? _selectedSubCatDoc;
+
+  bool _isCustomMode = false;
+  final TextEditingController _customSubCatController = TextEditingController();
+  final TextEditingController _customReferenceController = TextEditingController(text: 'General');
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSubCategories();
+  }
+
+  @override
+  void dispose() {
+    _customSubCatController.dispose();
+    _customReferenceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchSubCategories() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('sub_categories')
+          .where('main_categories_ref', isEqualTo: widget.mainCategoryRef)
+          .get();
+
+      final applicable = snapshot.docs.where((doc) {
+        final d = doc.data();
+        final isAll = d['is_all_models'] == true;
+        final targets = (d['target_models'] as List<dynamic>?) ?? [];
+        return isAll || targets.contains(widget.turbineModelRef.id);
+      }).toList();
+
+      // Preload references
+      final refMap = <String, String>{};
+      for (final subDoc in applicable) {
+        final subData = subDoc.data();
+        var ref = subData['default_reference']?.toString() ?? subData['reference']?.toString();
+        if (ref == null || ref.isEmpty) {
+          try {
+            final tSnap = await FirebaseFirestore.instance
+                .collection('tasks')
+                .where('sub_categories_ref', isEqualTo: subDoc.reference)
+                .limit(1)
+                .get();
+            if (tSnap.docs.isNotEmpty) {
+              ref = tSnap.docs.first.data()['referenceoftask']?.toString();
+            }
+          } catch (_) {}
+        }
+        refMap[subDoc.id] = (ref != null && ref.isNotEmpty) ? ref : 'General';
+      }
+
+      if (mounted) {
+        setState(() {
+          _subCategories = applicable;
+          _subCatReferences = refMap;
+          if (applicable.isNotEmpty) {
+            _selectedSubCatDoc = applicable.first;
+            _customReferenceController.text = _subCatReferences[applicable.first.id] ?? 'General';
+          } else {
+            _isCustomMode = true; // Auto-switch to custom if no existing subcategories
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching sub-categories for Add New NC: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _onProceed() {
+    String subCatName;
+    DocumentReference? subCatRef;
+    String effectiveRef;
+
+    if (_isCustomMode) {
+      subCatName = _customSubCatController.text.trim();
+      if (subCatName.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a sub-category name'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+      subCatRef = null;
+      effectiveRef = _customReferenceController.text.trim();
+      if (effectiveRef.isEmpty) effectiveRef = 'General';
+    } else {
+      if (_selectedSubCatDoc == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a sub-category'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+      final data = _selectedSubCatDoc!.data() as Map<String, dynamic>;
+      subCatName = (data['name'] as String?) ?? 'Unknown Sub-Category';
+      subCatRef = _selectedSubCatDoc!.reference;
+      effectiveRef = _subCatReferences[_selectedSubCatDoc!.id] ?? 'General';
+    }
+
+    Navigator.pop(context); // Close bottom sheet
+
+    Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddNewNcScreen(
+          mainCategoryName: widget.mainCategoryName,
+          mainCategoryRef: widget.mainCategoryRef,
+          subCategoryName: subCatName,
+          subCategoryRef: subCatRef,
+          defaultReference: effectiveRef,
+          turbineId: widget.turbineId,
+          turbineModelRef: widget.turbineModelRef,
+          draftId: widget.draftId,
+        ),
+      ),
+    ).then((saved) {
+      if (saved == true) {
+        widget.onCheckpointCreated();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Title Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD32F2F).withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.add_task_rounded, color: Color(0xFFD32F2F), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Add New NC',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                        ),
+                        Text(
+                          'Capture ad-hoc checkpoint for this audit',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Main Category Pill (Auto-selected)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00897B).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF00897B).withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_outlined, color: Color(0xFF00897B), size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Main Category (Automatic)',
+                            style: TextStyle(fontSize: 10, color: Color(0xFF00897B), fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            widget.mainCategoryName,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.lock_outline, color: Color(0xFF00897B), size: 16),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Mode Switcher (Select Existing vs Type New)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black26 : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_subCategories.isNotEmpty) {
+                            setState(() => _isCustomMode = false);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('No existing sub-categories found. Please enter a custom name.')),
+                            );
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: !_isCustomMode ? Theme.of(context).cardColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: !_isCustomMode
+                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          child: Center(
+                            child: Text(
+                              'Select Sub-Category',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: !_isCustomMode ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _isCustomMode = true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _isCustomMode ? Theme.of(context).cardColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: _isCustomMode
+                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '+ Type New Sub-Category',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _isCustomMode ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (!_isCustomMode) ...[
+                // Dropdown of existing sub-categories
+                DropdownButtonFormField<QueryDocumentSnapshot>(
+                  initialValue: _selectedSubCatDoc,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Sub-Category',
+                    prefixIcon: const Icon(Icons.list_alt_rounded, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  ),
+                  items: _subCategories.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final name = (data['name'] as String?) ?? 'Unknown';
+                    return DropdownMenuItem<QueryDocumentSnapshot>(
+                      value: doc,
+                      child: Text(name, style: const TextStyle(fontSize: 13, fontFamily: 'Outfit')),
+                    );
+                  }).toList(),
+                  onChanged: (doc) {
+                    if (doc != null) {
+                      setState(() {
+                        _selectedSubCatDoc = doc;
+                        _customReferenceController.text = _subCatReferences[doc.id] ?? 'General';
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                if (_selectedSubCatDoc != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Default Reference: ${_subCatReferences[_selectedSubCatDoc!.id] ?? "General"}',
+                          style: TextStyle(fontSize: 11, color: Colors.blue.shade900, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+              ] else ...[
+                // Custom Sub-Category Inputs
+                TextField(
+                  controller: _customSubCatController,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
+                  decoration: InputDecoration(
+                    labelText: 'Enter Custom Sub-Category Name *',
+                    hintText: 'e.g. Nacelle Roof Hatch, Oil Pump',
+                    prefixIcon: const Icon(Icons.create_outlined, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _customReferenceController,
+                  style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
+                  decoration: InputDecoration(
+                    labelText: 'Sub-Category Reference (Default)',
+                    hintText: 'Default: General',
+                    prefixIcon: const Icon(Icons.bookmark_border, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Proceed Button
+              ElevatedButton.icon(
+                onPressed: _onProceed,
+                icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                label: const Text(
+                  'Proceed to Checkpoint',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00897B),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/audit_manager.dart';
 import '../widgets/audit_card_widget.dart';
+import 'audit/add_new_nc_screen.dart';
 import 'audit_task_screen.dart';
 
 class AuditSubCategoriesScreen extends StatefulWidget {
@@ -196,6 +197,13 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add_task_rounded, color: Colors.white),
+                tooltip: 'Add New NC',
+                onPressed: _openCustomSubCatModal,
+              ),
+            ],
           ),
         ),
       ),
@@ -207,7 +215,7 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
-                childAspectRatio: 1.3,
+                childAspectRatio: 1.02,
               ),
               itemCount: 4,
               itemBuilder: (context, index) => const AuditCardSkeleton(),
@@ -231,7 +239,7 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
-                childAspectRatio: 1.3, // Wider cards
+                childAspectRatio: 1.02, // Balanced for card height with Add New NC button
               ),
               itemCount: _subCategories.length,
               itemBuilder: (context, index) {
@@ -268,6 +276,7 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
                       ),
                     ).then((_) => _recalculateStatsFromLocal());
                   },
+                  onAddNewNc: () => _openAddNewNcForSubCat(doc),
                 );
               },
             ),
@@ -294,10 +303,12 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
 
       final newStats = <String, Map<String, int>>{};
       for (var i = 0; i < _subCategories.length; i++) {
-        final subCatId = _subCategories[i].id;
+        final doc = _subCategories[i];
+        final subCatId = doc.id;
+        final subCatName = (doc.data() as Map<String, dynamic>)['name']?.toString() ?? '';
         final taskIds = taskSnapshots[i].docs.map((d) => d.id).toList();
         _subCategoryTaskIds[subCatId] = taskIds;
-        newStats[subCatId] = _computeStatsFromTaskIds(taskIds, allAnswers);
+        newStats[subCatId] = _computeStatsFromTaskIds(subCatId, subCatName, taskIds, allAnswers);
       }
 
       setState(() {
@@ -312,10 +323,11 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
     }
   }
 
-  Map<String, int> _computeStatsFromTaskIds(List<String> taskIds, Map<String, dynamic> allAnswers) {
+  Map<String, int> _computeStatsFromTaskIds(String subCatId, String subCatName, List<String> taskIds, Map<String, dynamic> allAnswers) {
     var okCount = 0;
     var notOkCount = 0;
     var naCount = 0;
+    var customCount = 0;
 
     for (final taskId in taskIds) {
       if (allAnswers.containsKey(taskId)) {
@@ -331,15 +343,222 @@ class _AuditSubCategoriesScreenState extends State<AuditSubCategoriesScreen> {
       }
     }
 
-    return {'total': taskIds.length, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
+    // Include custom NCs for this sub-category
+    for (final entry in allAnswers.entries) {
+      final taskId = entry.key;
+      if (taskIds.contains(taskId)) continue;
+      final taskData = entry.value as Map<String, dynamic>?;
+      if (taskData == null) continue;
+      final isForSubCat = taskData['sub_category_id'] == subCatId ||
+          (taskData['sub_category_name'] == subCatName && taskData['main_category_id'] == widget.mainCategoryRef.id);
+      if (isForSubCat) {
+        customCount++;
+        final status = taskData['status'];
+        if (status == 'OK') {
+          okCount++;
+        } else if (status == 'Not OK') {
+          notOkCount++;
+        } else if (status == 'NA') {
+          naCount++;
+        }
+      }
+    }
+
+    return {'total': taskIds.length + customCount, 'ok': okCount, 'notOk': notOkCount, 'na': naCount};
   }
 
   void _recalculateStatsFromLocal() {
     final allAnswers = AuditManager.instance.getAllAnswers();
     setState(() {
-      for (final entry in _subCategoryTaskIds.entries) {
-        _subCategoryStats[entry.key] = _computeStatsFromTaskIds(entry.value, allAnswers);
+      for (var i = 0; i < _subCategories.length; i++) {
+        final doc = _subCategories[i];
+        final subCatId = doc.id;
+        final subCatName = (doc.data() as Map<String, dynamic>)['name']?.toString() ?? '';
+        final taskIds = _subCategoryTaskIds[subCatId] ?? [];
+        _subCategoryStats[subCatId] = _computeStatsFromTaskIds(subCatId, subCatName, taskIds, allAnswers);
       }
     });
+  }
+
+  Future<void> _openAddNewNcForSubCat(QueryDocumentSnapshot subDoc) async {
+    final data = subDoc.data() as Map<String, dynamic>;
+    final subCatName = (data['name'] as String?) ?? 'Unknown Sub-Category';
+    var ref = data['default_reference']?.toString() ?? data['reference']?.toString();
+
+    if (ref == null || ref.isEmpty) {
+      try {
+        final tSnap = await FirebaseFirestore.instance
+            .collection('tasks')
+            .where('sub_categories_ref', isEqualTo: subDoc.reference)
+            .limit(1)
+            .get();
+        if (tSnap.docs.isNotEmpty) {
+          ref = tSnap.docs.first.data()['referenceoftask']?.toString();
+        }
+      } catch (_) {}
+    }
+    final effectiveRef = (ref != null && ref.isNotEmpty) ? ref : 'General';
+
+    if (!mounted) return;
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddNewNcScreen(
+          mainCategoryName: widget.parentCategoryName,
+          mainCategoryRef: widget.mainCategoryRef,
+          subCategoryName: subCatName,
+          subCategoryRef: subDoc.reference,
+          defaultReference: effectiveRef,
+          turbineId: widget.turbineId,
+          turbineModelRef: widget.turbineModelRef,
+          draftId: widget.draftId,
+        ),
+      ),
+    );
+    _recalculateStatsFromLocal();
+  }
+
+  void _openCustomSubCatModal() {
+    final customSubCatController = TextEditingController();
+    final customReferenceController = TextEditingController(text: 'General');
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+        decoration: BoxDecoration(
+          color: Theme.of(sheetCtx).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD32F2F).withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add_task_rounded, color: Color(0xFFD32F2F), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Add New NC',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                          ),
+                          Text(
+                            'Main Category: ${widget.parentCategoryName}',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(sheetCtx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: customSubCatController,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
+                  decoration: InputDecoration(
+                    labelText: 'Sub-Category Name *',
+                    hintText: 'e.g. Nacelle Roof Hatch, Oil Pump',
+                    prefixIcon: const Icon(Icons.create_outlined, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Theme.of(sheetCtx).brightness == Brightness.dark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: customReferenceController,
+                  style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
+                  decoration: InputDecoration(
+                    labelText: 'Reference (Default)',
+                    hintText: 'Default: General',
+                    prefixIcon: const Icon(Icons.bookmark_border, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Theme.of(sheetCtx).brightness == Brightness.dark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final name = customSubCatController.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter sub-category name'), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+                    var ref = customReferenceController.text.trim();
+                    if (ref.isEmpty) ref = 'General';
+
+                    Navigator.pop(sheetCtx);
+
+                    Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AddNewNcScreen(
+                          mainCategoryName: widget.parentCategoryName,
+                          mainCategoryRef: widget.mainCategoryRef,
+                          subCategoryName: name,
+                          defaultReference: ref,
+                          turbineId: widget.turbineId,
+                          turbineModelRef: widget.turbineModelRef,
+                          draftId: widget.draftId,
+                        ),
+                      ),
+                    ).then((saved) {
+                      if (saved == true) {
+                        _recalculateStatsFromLocal();
+                      }
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text(
+                    'Proceed to Checkpoint',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00897B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

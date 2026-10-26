@@ -9,9 +9,17 @@ class AuditCard extends StatelessWidget {
   final int notOk;
   final int pending;
   final VoidCallback onTap;
+  final VoidCallback? onAddNewNc;
 
   const AuditCard({
-    required this.title, required this.total, required this.ok, required this.notOk, required this.pending, required this.onTap, super.key,
+    required this.title,
+    required this.total,
+    required this.ok,
+    required this.notOk,
+    required this.pending,
+    required this.onTap,
+    this.onAddNewNc,
+    super.key,
   });
 
   AuditStatusTheme get _theme {
@@ -137,6 +145,40 @@ class AuditCard extends StatelessWidget {
                       minHeight: 6, // Slimmer bar
                     ),
                   ),
+                  if (onAddNewNc != null) ...[
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: onAddNewNc,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD32F2F).withValues(alpha: isDark ? 0.2 : 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFD32F2F).withValues(alpha: 0.35),
+                            width: 1.0,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_circle_outline_rounded, size: 14, color: Color(0xFFD32F2F)),
+                            SizedBox(width: 5),
+                            Text(
+                              'Add New NC',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD32F2F),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
