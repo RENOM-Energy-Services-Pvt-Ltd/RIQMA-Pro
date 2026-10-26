@@ -163,9 +163,13 @@ class AppUpdateService {
         final response = await http
             .get(
               Uri.parse(_githubLatestReleaseApi),
-              headers: {'Accept': 'application/vnd.github.v3+json'},
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'RIQMA-Pro-App',
+                'Cache-Control': 'no-cache',
+              },
             )
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
           final Map<String, dynamic> data =
