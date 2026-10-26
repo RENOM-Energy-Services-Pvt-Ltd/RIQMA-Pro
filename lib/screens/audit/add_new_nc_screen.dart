@@ -92,9 +92,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
   late final String _taskId;
   late TextEditingController _subCategoryController;
   late TextEditingController _titleController;
-  late TextEditingController _descController;
   late TextEditingController _observationController;
-  late TextEditingController _remarksController;
   late TextEditingController _closureRemarkController;
 
   String? _selectedReference;
@@ -103,7 +101,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
 
   // Status is null by default: Neither OK nor Not OK is pre-selected
   String? _status;
-  String? _subStatus = 'MCF';
+  String? _subStatus;
   String? _selectedRootCause;
   final List<String> _photos = [];
   bool _isCorrected = false;
@@ -124,14 +122,8 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     _titleController = TextEditingController(
       text: (data['question'] as String?) ?? (data['title'] as String?) ?? 'New Checkpoint',
     );
-    _descController = TextEditingController(
-      text: (data['description'] as String?) ?? '',
-    );
     _observationController = TextEditingController(
       text: (data['observation'] as String?) ?? '',
-    );
-    _remarksController = TextEditingController(
-      text: (data['remarks'] as String?) ?? '',
     );
     _closureRemarkController = TextEditingController(
       text: (data['closure_remark'] as String?) ?? '',
@@ -147,8 +139,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       _status = null; // Unselected by default
     }
 
-    if (data.containsKey('sub_status')) {
+    if (data.containsKey('sub_status') && data['sub_status'] != null) {
       _subStatus = data['sub_status']?.toString();
+    } else {
+      _subStatus = null;
     }
     if (data.containsKey('root_cause')) {
       _selectedRootCause = data['root_cause']?.toString();
@@ -169,9 +163,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
   void dispose() {
     _subCategoryController.dispose();
     _titleController.dispose();
-    _descController.dispose();
     _observationController.dispose();
-    _remarksController.dispose();
     _closureRemarkController.dispose();
     super.dispose();
   }
@@ -234,7 +226,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     );
   }
 
-  Future<void> _capturePhoto({bool isClosure = false}) async {
+  Future<void> _capturePhoto() async {
     try {
       final source = await _selectPhotoSource(context);
       if (source == null) return;
@@ -248,8 +240,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
         finalPath = image.path;
       } else {
         final appDir = await getApplicationDocumentsDirectory();
-        final tag = isClosure ? 'closure' : 'obs_${_photos.length}';
-        final fileName = '${_taskId}_${tag}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final fileName = '${_taskId}_obs_${_photos.length}_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final targetPath = p.join(appDir.path, fileName);
 
         String? savedPath;
@@ -283,11 +274,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       }
 
       setState(() {
-        if (isClosure) {
-          _closurePhotoPath = finalPath;
-        } else {
-          _photos.add(finalPath);
-        }
+        _photos.add(finalPath);
       });
     } catch (e) {
       debugPrint('❌ Error capturing photo: $e');
@@ -297,6 +284,238 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
         );
       }
     }
+  }
+
+  Future<String?> _compressClosurePhotoLocally(XFile imageFile) async {
+    if (kIsWeb) return imageFile.path;
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = '${_taskId}_closure_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final targetPath = p.join(appDir.path, fileName);
+
+      try {
+        final compressedFile = await FlutterImageCompress.compressAndGetFile(
+          imageFile.path,
+          targetPath,
+          quality: 70,
+        );
+        if (compressedFile != null && await File(compressedFile.path).exists()) {
+          return compressedFile.path;
+        }
+      } catch (compressErr) {
+        debugPrint('⚠️ Closure image compression failed: $compressErr, falling back to copy');
+      }
+
+      try {
+        final originalFile = File(imageFile.path);
+        if (await originalFile.exists()) {
+          final copied = await originalFile.copy(targetPath);
+          return copied.path;
+        }
+      } catch (copyErr) {
+        debugPrint('⚠️ Error copying original closure image: $copyErr');
+      }
+
+      return imageFile.path;
+    } catch (e) {
+      debugPrint('Error compressing closure photo: $e');
+      return imageFile.path;
+    }
+  }
+
+  void _showCorrectionDialog() {
+    final remarkController = TextEditingController(text: _closureRemarkController.text);
+    var currentPhotoUrl = _closurePhotoPath;
+    var selectedRootCause = _selectedRootCause;
+    XFile? pickedImage;
+    var isUploading = false;
+    var markAsOk = _status == 'OK';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            title: const Text('Record Correction'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: remarkController,
+                    decoration: const InputDecoration(
+                      labelText: 'How was it fixed?',
+                      hintText: 'e.g., Tightened loose connection',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 16),
+                  if (_rootCauses.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedRootCause,
+                      decoration: const InputDecoration(
+                        labelText: 'Root Cause',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _rootCauses.map((cause) => DropdownMenuItem(value: cause, child: Text(cause))).toList(),
+                      onChanged: (val) => setDialogState(() => selectedRootCause = val),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  const Text('Proof of Correction:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final source = await _selectPhotoSource(context);
+                      if (source == null) return;
+                      final picker = ImagePicker();
+                      final image = await picker.pickImage(source: source);
+                      if (image != null) {
+                        setDialogState(() {
+                          pickedImage = image;
+                          currentPhotoUrl = null;
+                        });
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        Container(
+                          height: 150,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[400]!),
+                          ),
+                          alignment: Alignment.center,
+                          child: pickedImage != null
+                              ? (kIsWeb || pickedImage!.path.startsWith('http')
+                                  ? Image.network(pickedImage!.path, fit: BoxFit.cover)
+                                  : Image.file(File(pickedImage!.path), fit: BoxFit.cover))
+                              : currentPhotoUrl != null
+                                  ? (kIsWeb || currentPhotoUrl!.startsWith('http')
+                                      ? Image.network(currentPhotoUrl!, fit: BoxFit.cover)
+                                      : Image.file(File(currentPhotoUrl!), fit: BoxFit.cover))
+                                  : const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.camera_alt, color: Colors.grey, size: 40),
+                                        Text('Tap to Take/Import Photo', style: TextStyle(color: Colors.grey)),
+                                      ],
+                                    ),
+                        ),
+                        if (pickedImage != null || currentPhotoUrl != null)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  pickedImage = null;
+                                  currentPhotoUrl = null;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade600,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.3),
+                                      blurRadius: 3,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(Icons.close, color: Colors.white, size: 16),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Mark Task as OK?'),
+                      const Spacer(),
+                      Switch(
+                        value: markAsOk,
+                        activeTrackColor: Colors.green.withValues(alpha: 0.5),
+                        activeThumbColor: Colors.green,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            markAsOk = val;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (isUploading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isUploading ? null : () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isUploading
+                    ? null
+                    : () async {
+                        final navigator = Navigator.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        if (remarkController.text.trim().isEmpty) {
+                          messenger.showSnackBar(const SnackBar(content: Text('Please enter a remark')));
+                          return;
+                        }
+                        if (pickedImage == null && currentPhotoUrl == null) {
+                          messenger.showSnackBar(const SnackBar(content: Text('Please take a proof photo')));
+                          return;
+                        }
+
+                        var localPath = currentPhotoUrl;
+                        if (pickedImage != null) {
+                          setDialogState(() => isUploading = true);
+                          localPath = await _compressClosurePhotoLocally(pickedImage!);
+                          setDialogState(() => isUploading = false);
+                        }
+
+                        if (localPath != null) {
+                          setState(() {
+                            _closureRemarkController.text = remarkController.text.trim();
+                            _closurePhotoPath = localPath;
+                            if (selectedRootCause != null) {
+                              _selectedRootCause = selectedRootCause;
+                            }
+                            _isCorrected = true;
+                            if (markAsOk) {
+                              _status = 'OK';
+                              _subStatus = null;
+                            }
+                          });
+
+                          if (navigator.canPop()) navigator.pop();
+                        } else {
+                          messenger.showSnackBar(const SnackBar(content: Text('Failed to save photo')));
+                        }
+                      },
+                child: const Text('Save Correction'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _confirmAndRemovePhoto(String path) async {
@@ -459,7 +678,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       'is_custom_nc': true,
       'question': _titleController.text.trim(),
       'title': _titleController.text.trim(),
-      'description': _descController.text.trim(),
+      'description': '',
       'main_category_name': widget.mainCategoryName,
       'main_category_id': widget.mainCategoryRef.id,
       'main_category_ref': widget.mainCategoryRef,
@@ -471,7 +690,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       'status': _status,
       'sub_status': _status == 'Not OK' ? _subStatus : null,
       'observation': _observationController.text.trim(),
-      'remarks': _remarksController.text.trim(),
+      'remarks': '',
       'root_cause': _selectedRootCause,
       'photos': _photos,
       'is_corrected': _isCorrected,
@@ -573,37 +792,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                  ),
-                ),
-                // Reference Tag button
-                InkWell(
-                  onTap: _openReferencePicker,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white30, width: 1),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _selectedReference != null
-                              ? 'Ref: $_selectedReference'
-                              : 'Select Ref',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'Outfit',
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white),
-                      ],
-                    ),
                   ),
                 ),
               ],
@@ -720,26 +908,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           ),
                         ),
-                        const SizedBox(height: 12),
-
-                        // Checkpoint Description (Blank by default)
-                        TextField(
-                          controller: _descController,
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 13, fontFamily: 'Outfit'),
-                          decoration: InputDecoration(
-                            labelText: 'Checkpoint Description (Optional)',
-                            labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.15)),
-                            ),
-                            filled: true,
-                            fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -791,7 +959,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                       onTap: () {
                                         setState(() {
                                           _status = 'Not OK';
-                                          _subStatus ??= 'MCF';
                                         });
                                       },
                                     ),
@@ -1005,10 +1172,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                     ),
                                   )),
                               if (_photos.length < 3)
-                                Padding(
+                                 Padding(
                                   padding: const EdgeInsets.only(top: 6.0),
                                   child: GestureDetector(
-                                    onTap: () => _capturePhoto(isClosure: false),
+                                    onTap: _capturePhoto,
                                     child: Container(
                                       width: 80,
                                       height: 80,
@@ -1065,29 +1232,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                             label: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('Observation / Problem Description'),
+                                const Text('Observation'),
                                 if (_status == 'Not OK')
                                   const Text(' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                               ],
                             ),
-                            alignLabelWithHint: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
-                            ),
-                            filled: true,
-                            fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
-                            contentPadding: const EdgeInsets.all(16),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _remarksController,
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
-                          decoration: InputDecoration(
-                            labelText: 'Remarks / Additional Notes',
                             alignLabelWithHint: true,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             enabledBorder: OutlineInputBorder(
@@ -1152,98 +1301,61 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                     const SizedBox(height: 20),
                   ],
 
-                  // Card 6: On-Spot Correction (Visible if Not OK or already corrected)
+                  // Card 6: Deviation Corrected Button (Matches AuditTaskScreen exactly)
                   if (_status == 'Not OK' || _isCorrected) ...[
                     _buildElectricCard(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
                             children: [
                               Icon(
-                                _isCorrected ? Icons.check_circle_rounded : Icons.build_circle_outlined,
+                                _isCorrected ? Icons.check_circle : Icons.build_circle,
                                 color: _isCorrected ? Colors.green : Colors.orange,
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 12),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _isCorrected ? 'Deviation Corrected On-Spot' : 'Fix Deviation On-Spot?',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: _isCorrected ? Colors.green.shade800 : Colors.black87,
-                                        fontFamily: 'Outfit',
-                                      ),
-                                    ),
-                                    Text(
-                                      _isCorrected ? 'Marked as corrected on-site' : 'Capture proof if defect was fixed immediately',
-                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                    ),
-                                  ],
+                                child: Text(
+                                  _isCorrected ? 'Deviation Corrected On-Spot' : 'Fix Deviation Now?',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isCorrected ? Colors.green[800] : Colors.orange[900],
+                                    fontFamily: 'Outfit',
+                                  ),
                                 ),
-                              ),
-                              Switch(
-                                value: _isCorrected,
-                                activeTrackColor: Colors.green.withValues(alpha: 0.5),
-                                activeThumbColor: Colors.green,
-                                onChanged: (val) => setState(() => _isCorrected = val),
                               ),
                             ],
                           ),
                           if (_isCorrected) ...[
-                            const SizedBox(height: 16),
-                            TextField(
-                              controller: _closureRemarkController,
-                              maxLines: 2,
-                              decoration: InputDecoration(
-                                labelText: 'Closure Remark *',
-                                hintText: 'How was this issue resolved?',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
-                                ),
-                                filled: true,
-                                fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
-                                contentPadding: const EdgeInsets.all(14),
-                              ),
-                            ),
                             const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                if (_closurePhotoPath != null)
-                                  GestureDetector(
-                                    onTap: () => _showFullImage(_closurePhotoPath!),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(right: 12),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.green),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(7),
-                                        child: (kIsWeb || _closurePhotoPath!.startsWith('http'))
-                                            ? Image.network(_closurePhotoPath!, width: 70, height: 70, fit: BoxFit.cover)
-                                            : Image.file(File(_closurePhotoPath!), width: 70, height: 70, fit: BoxFit.cover),
-                                      ),
-                                    ),
-                                  ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _capturePhoto(isClosure: true),
-                                  icon: const Icon(Icons.camera_alt, size: 16),
-                                  label: Text(_closurePhotoPath == null ? 'Attach Proof Photo *' : 'Retake Proof Photo'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green.shade700,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              'Remark: ${_closureRemarkController.text.isNotEmpty ? _closureRemarkController.text : "-"}',
+                              style: TextStyle(color: Colors.grey[800], fontFamily: 'Outfit'),
                             ),
+                            const SizedBox(height: 8),
+                            // View Proof Button
+                            if (_closurePhotoPath != null)
+                              OutlinedButton.icon(
+                                onPressed: () => _showFullImage(_closurePhotoPath!),
+                                icon: const Icon(Icons.image),
+                                label: const Text('View Proof'),
+                              ),
                           ],
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _showCorrectionDialog,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isCorrected ? Colors.grey[200] : const Color(0xFF00E5FF),
+                              foregroundColor: _isCorrected ? Colors.black : Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(
+                              _isCorrected ? 'Edit Correction' : 'Record On-Spot Correction',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Outfit'),
+                            ),
+                          ),
                         ],
                       ),
                     ),

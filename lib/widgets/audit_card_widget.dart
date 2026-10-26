@@ -42,19 +42,6 @@ class AuditCard extends StatelessWidget {
     }
   }
 
-  IconData get _icon {
-    switch (_theme) {
-      case AuditStatusTheme.success:
-        return Icons.check_circle_outline_rounded;
-      case AuditStatusTheme.danger:
-        return Icons.error_outline_rounded;
-      case AuditStatusTheme.warning:
-        return Icons.pending_actions_rounded;
-      case AuditStatusTheme.neutral:
-        return Icons.assignment_outlined;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final color = _baseColor;
@@ -102,31 +89,30 @@ class AuditCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(_icon, color: color, size: 24), // Reduced from 34
-                       _buildIndicatorTag(pending == 0 ? 'COMPLETE' : '${(progress * 100).toInt()}%', color),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          height: 1.15,
-                          letterSpacing: -0.2,
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            height: 1.2,
+                            letterSpacing: -0.2,
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      _buildIndicatorTag(
+                        pending == 0 ? 'COMPLETE' : '${(progress * 100).toInt()}%',
+                        color,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const Spacer(),
                   
                   // Stats Row - Wide rounded boxes
                   Row(
@@ -301,20 +287,37 @@ class _AuditCardSkeletonState extends State<AuditCardSkeleton> with SingleTicker
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Row: Icon skeleton + Tag skeleton
+              // Top Row: Title skeleton + Tag skeleton
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: shimmerColor,
-                      borderRadius: BorderRadius.circular(8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: shimmerColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Container(
+                          width: 80,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: shimmerColor,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Container(
-                    width: 58,
+                    width: 48,
                     height: 18,
                     decoration: BoxDecoration(
                       color: shimmerColor,
@@ -324,25 +327,6 @@ class _AuditCardSkeletonState extends State<AuditCardSkeleton> with SingleTicker
                 ],
               ),
               const Spacer(),
-              // Title skeleton (2 lines)
-              Container(
-                width: double.infinity,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: shimmerColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                width: 90,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: shimmerColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 14),
               // Stats Row (3 pill boxes)
               Row(
                 children: [
