@@ -12,12 +12,58 @@ import 'package:provider/provider.dart';
 import '../../providers/app_settings_provider.dart';
 import '../../services/audit_manager.dart';
 
+Future<ImageSource?> _selectPhotoSource(BuildContext ctx) async {
+  final appSettings = Provider.of<AppSettingsProvider>(ctx, listen: false);
+  if (!appSettings.allowGalleryImport) {
+    return ImageSource.camera;
+  }
+
+  return showModalBottomSheet<ImageSource>(
+    context: ctx,
+    backgroundColor: Theme.of(ctx).scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetCtx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Wrap(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+              child: Text(
+                'Select Photo Source',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(sheetCtx).colorScheme.onSurface,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF1A237E)),
+              title: const Text('Take Photo (Camera)', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF00897B)),
+              title: const Text('Import from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class AddNewNcScreen extends StatefulWidget {
   final String mainCategoryName;
   final DocumentReference mainCategoryRef;
-  final String subCategoryName;
-  final DocumentReference? subCategoryRef;
-  final String defaultReference;
+  final String? initialSubCategoryName;
+  final DocumentReference? initialSubCategoryRef;
+  final String? initialReference;
   final String? turbineId;
   final DocumentReference? turbineModelRef;
   final String? draftId;
@@ -27,10 +73,10 @@ class AddNewNcScreen extends StatefulWidget {
   const AddNewNcScreen({
     required this.mainCategoryName,
     required this.mainCategoryRef,
-    required this.subCategoryName,
-    required this.defaultReference,
     super.key,
-    this.subCategoryRef,
+    this.initialSubCategoryName,
+    this.initialSubCategoryRef,
+    this.initialReference,
     this.turbineId,
     this.turbineModelRef,
     this.draftId,
@@ -44,14 +90,20 @@ class AddNewNcScreen extends StatefulWidget {
 
 class _AddNewNcScreenState extends State<AddNewNcScreen> {
   late final String _taskId;
+  late TextEditingController _subCategoryController;
   late TextEditingController _titleController;
   late TextEditingController _descController;
   late TextEditingController _observationController;
   late TextEditingController _remarksController;
   late TextEditingController _closureRemarkController;
 
-  String _status = 'Not OK'; // Default to Not OK for adding new NC
-  String? _subStatus = 'MCF'; // Default severity
+  String? _selectedReference;
+  final List<String> _references = [];
+  bool _isLoadingReferences = true;
+
+  // Status is null by default: Neither OK nor Not OK is pre-selected
+  String? _status;
+  String? _subStatus = 'MCF';
   String? _selectedRootCause;
   final List<String> _photos = [];
   bool _isCorrected = false;
@@ -66,6 +118,9 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
 
     final data = widget.initialData ?? AuditManager.instance.getAnswer(_taskId) ?? {};
 
+    _subCategoryController = TextEditingController(
+      text: (data['sub_category_name'] as String?) ?? widget.initialSubCategoryName ?? '',
+    );
     _titleController = TextEditingController(
       text: (data['question'] as String?) ?? (data['title'] as String?) ?? 'New Checkpoint',
     );
@@ -82,9 +137,16 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       text: (data['closure_remark'] as String?) ?? '',
     );
 
-    if (data.containsKey('status')) {
-      _status = data['status']?.toString() ?? 'Not OK';
+    _selectedReference = (data['reference_name'] as String?) ??
+        (data['referenceoftask'] as String?) ??
+        widget.initialReference;
+
+    if (data.containsKey('status') && data['status'] != null && data['status'].toString().isNotEmpty) {
+      _status = data['status'].toString();
+    } else {
+      _status = null; // Unselected by default
     }
+
     if (data.containsKey('sub_status')) {
       _subStatus = data['sub_status']?.toString();
     }
@@ -99,17 +161,44 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     }
     _closurePhotoPath = (data['closure_photo_local_path'] as String?) ?? (data['closure_photo'] as String?);
 
+    _fetchReferences();
     _fetchRootCauses();
   }
 
   @override
   void dispose() {
+    _subCategoryController.dispose();
     _titleController.dispose();
     _descController.dispose();
     _observationController.dispose();
     _remarksController.dispose();
     _closureRemarkController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchReferences() async {
+    try {
+      final snap = await FirebaseFirestore.instance.collection('references').get();
+      if (mounted) {
+        final list = <String>[];
+        for (var doc in snap.docs) {
+          final name = (doc.data()['name'] as String?)?.trim();
+          if (name != null && name.isNotEmpty && !list.contains(name)) {
+            list.add(name);
+          }
+        }
+        list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        setState(() {
+          _references.addAll(list);
+          _isLoadingReferences = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching references: $e');
+      if (mounted) {
+        setState(() => _isLoadingReferences = false);
+      }
+    }
   }
 
   Future<void> _fetchRootCauses() async {
@@ -121,7 +210,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
           setState(() {
             _rootCauses = List<String>.from(data['values'] as List);
           });
-          return;
         }
       }
     } catch (e) {
@@ -129,55 +217,26 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     }
   }
 
-  Future<ImageSource?> _selectPhotoSource() async {
-    final appSettings = Provider.of<AppSettingsProvider>(context, listen: false);
-    if (!appSettings.allowGalleryImport) {
-      return ImageSource.camera;
-    }
-
-    return showModalBottomSheet<ImageSource>(
+  void _openReferencePicker() {
+    showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Wrap(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-                child: Text(
-                  'Select Photo Source',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(sheetCtx).colorScheme.onSurface,
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Color(0xFF1A237E)),
-                title: const Text('Take Photo (Camera)', style: TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Color(0xFF00897B)),
-                title: const Text('Import from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
-              ),
-            ],
-          ),
-        ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _ReferencePickerSheet(
+        references: _references,
+        selectedReference: _selectedReference,
+        onSelected: (ref) {
+          setState(() {
+            _selectedReference = ref;
+          });
+        },
       ),
     );
   }
 
   Future<void> _capturePhoto({bool isClosure = false}) async {
     try {
-      final source = await _selectPhotoSource();
+      final source = await _selectPhotoSource(context);
       if (source == null) return;
 
       final picker = ImagePicker();
@@ -259,16 +318,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       ),
     );
 
-    if (shouldRemove == true && mounted) {
+    if (shouldRemove == true) {
       setState(() {
         _photos.remove(path);
       });
-      if (!kIsWeb) {
-        try {
-          final file = File(path);
-          if (await file.exists()) await file.delete();
-        } catch (_) {}
-      }
     }
   }
 
@@ -304,9 +357,15 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
             Positioned(
               top: 40,
               right: 20,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                onPressed: () => Navigator.of(context).pop(),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 24),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
           ],
@@ -316,8 +375,20 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
   }
 
   bool _validateForm() {
-    final appSettings = Provider.of<AppSettingsProvider>(context, listen: false);
-    final observation = _observationController.text.trim();
+    final subCatName = _subCategoryController.text.trim();
+    if (subCatName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter Sub-Category name'), backgroundColor: Colors.red),
+      );
+      return false;
+    }
+
+    if (_selectedReference == null || _selectedReference!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a Reference'), backgroundColor: Colors.red),
+      );
+      return false;
+    }
 
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -325,6 +396,16 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       );
       return false;
     }
+
+    if (_status == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select status (OK / NOT OK / NA)'), backgroundColor: Colors.red),
+      );
+      return false;
+    }
+
+    final appSettings = Provider.of<AppSettingsProvider>(context, listen: false);
+    final observation = _observationController.text.trim();
 
     if (appSettings.mandatoryObservationText && observation.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -369,8 +450,9 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
   Future<void> _saveCheckpoint() async {
     if (!_validateForm()) return;
 
-    final subCatId = widget.subCategoryRef?.id ??
-        'custom_sub_${widget.subCategoryName.replaceAll(RegExp(r'\s+'), '_').toLowerCase()}';
+    final subCatName = _subCategoryController.text.trim();
+    final subCatId = widget.initialSubCategoryRef?.id ??
+        'custom_sub_${subCatName.replaceAll(RegExp(r'\s+'), '_').toLowerCase()}';
 
     final dataToSave = <String, dynamic>{
       'id': _taskId,
@@ -381,11 +463,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       'main_category_name': widget.mainCategoryName,
       'main_category_id': widget.mainCategoryRef.id,
       'main_category_ref': widget.mainCategoryRef,
-      'sub_category_name': widget.subCategoryName,
+      'sub_category_name': subCatName,
       'sub_category_id': subCatId,
-      if (widget.subCategoryRef != null) 'sub_categories_ref': widget.subCategoryRef,
-      'reference_name': widget.defaultReference,
-      'referenceoftask': widget.defaultReference,
+      if (widget.initialSubCategoryRef != null) 'sub_categories_ref': widget.initialSubCategoryRef,
+      'reference_name': _selectedReference ?? 'General',
+      'referenceoftask': _selectedReference ?? 'General',
       'status': _status,
       'sub_status': _status == 'Not OK' ? _subStatus : null,
       'observation': _observationController.text.trim(),
@@ -408,14 +490,14 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       }
     }
 
-    // Save into AuditManager
+    // Save into AuditManager (Local persistent file)
     AuditManager.instance.saveAnswer(_taskId, dataToSave);
     await AuditManager.instance.flush();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('New Checkpoint / NC Saved Successfully!'),
+        content: Text('Checkpoint / NC Saved Successfully!'),
         backgroundColor: Color(0xFF00897B),
         duration: Duration(seconds: 2),
       ),
@@ -432,7 +514,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       backgroundColor: const Color(0xFFF5F7FA),
       body: Column(
         children: [
-          // Header Bar
+          // Header Bar (Matches AuditTaskScreen header gradient & layout)
           Container(
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 8,
@@ -478,13 +560,14 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        widget.subCategoryName,
+                        _subCategoryController.text.trim().isNotEmpty
+                            ? _subCategoryController.text.trim()
+                            : 'Add New Checkpoint',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           fontFamily: 'Outfit',
-                          letterSpacing: 0.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -492,29 +575,35 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                     ],
                   ),
                 ),
-                // Default Reference Tag
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white30, width: 1),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.bookmark_outline, size: 12, color: Colors.white),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Ref: ${widget.defaultReference}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Outfit',
+                // Reference Tag button
+                InkWell(
+                  onTap: _openReferencePicker,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white30, width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _selectedReference != null
+                              ? 'Ref: $_selectedReference'
+                              : 'Select Ref',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Outfit',
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -528,79 +617,124 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Card 1: Checkpoint Title & Description
-                  _buildCard(
+                  // Card 1: Category & Checkpoint Name Details
+                  _buildElectricCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1A237E).withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.playlist_add_check_rounded, color: Color(0xFF1A237E), size: 18),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Checkpoint Details',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A237E),
-                                fontFamily: 'Outfit',
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.orange.shade200),
-                              ),
-                              child: Text(
-                                'Custom NC',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange.shade800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                        // Sub-Category Name (Typeable)
                         TextField(
-                          controller: _titleController,
+                          controller: _subCategoryController,
+                          onChanged: (_) => setState(() {}),
                           style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             fontFamily: 'Outfit',
                           ),
                           decoration: InputDecoration(
-                            labelText: 'Task / Checkpoint Name *',
+                            labelText: 'Sub-Category Name',
+                            hintText: 'Enter sub-category name',
                             labelStyle: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-                            prefixIcon: const Icon(Icons.label_outline, size: 20),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.15)),
+                            ),
                             filled: true,
                             fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           ),
                         ),
                         const SizedBox(height: 12),
+
+                        // Reference Selection Field
+                        InkWell(
+                          onTap: _openReferencePicker,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.15)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Reference',
+                                        style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _selectedReference != null && _selectedReference!.isNotEmpty
+                                            ? _selectedReference!
+                                            : 'Tap to select reference',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'Outfit',
+                                          color: _selectedReference != null
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Colors.grey.shade500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (_isLoadingReferences)
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                else
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Checkpoint Title
+                        TextField(
+                          controller: _titleController,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Outfit',
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Checkpoint Name',
+                            labelStyle: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.15)),
+                            ),
+                            filled: true,
+                            fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Checkpoint Description (Blank by default)
                         TextField(
                           controller: _descController,
                           maxLines: 2,
                           style: const TextStyle(fontSize: 13, fontFamily: 'Outfit'),
                           decoration: InputDecoration(
-                            labelText: 'Task Description (Optional)',
-                            hintText: 'Blank by default - add details if needed',
+                            labelText: 'Checkpoint Description (Optional)',
                             labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                            prefixIcon: const Icon(Icons.description_outlined, size: 20),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.15)),
+                            ),
                             filled: true,
                             fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -609,10 +743,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
-                  // Card 2: Status Selection
-                  _buildCard(
+                  // Card 2: Status Selection (Matches AuditTaskScreen exactly)
+                  _buildElectricCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -671,6 +805,13 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                         decoration: BoxDecoration(
                                           color: Colors.green[600],
                                           borderRadius: BorderRadius.circular(4),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.1),
+                                              blurRadius: 2,
+                                              offset: const Offset(0, 1),
+                                            ),
+                                          ],
                                         ),
                                         child: const Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -709,11 +850,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                         // Severity Levels (Aobs, MCF, CF)
                         if (_status == 'Not OK') ...[
                           const SizedBox(height: 16),
-                          const Text(
-                            'NC Severity Level *',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
-                          ),
-                          const SizedBox(height: 8),
                           Row(
                             children: [
                               Expanded(
@@ -754,10 +890,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
-                  // Card 3: Photos
-                  _buildCard(
+                  // Card 3: Photos (Matches AuditTaskScreen photo card exactly)
+                  _buildElectricCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -769,7 +905,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                 const Text(
                                   'Photos',
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFF1A237E),
                                     fontFamily: 'Outfit',
@@ -780,25 +916,25 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                               ],
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.grey[100],
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 '${_photos.length} Attached',
-                                style: TextStyle(fontSize: 11, color: Colors.grey[700], fontWeight: FontWeight.bold),
+                                style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
                             children: [
                               ..._photos.map((path) => Padding(
-                                    padding: const EdgeInsets.only(right: 12.0, top: 4.0),
+                                    padding: const EdgeInsets.only(right: 14.0, top: 6.0),
                                     child: Stack(
                                       clipBehavior: Clip.none,
                                       children: [
@@ -806,11 +942,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                           onTap: () => _showFullImage(path),
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(6),
                                               border: Border.all(color: Colors.grey.shade300),
                                             ),
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(7),
+                                              borderRadius: BorderRadius.circular(5),
                                               child: (kIsWeb || path.startsWith('http'))
                                                   ? Image.network(
                                                       path,
@@ -821,7 +957,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                                         width: 80,
                                                         height: 80,
                                                         color: Colors.grey.shade200,
-                                                        child: const Icon(Icons.broken_image, color: Colors.grey),
+                                                        child: const Icon(Icons.broken_image, color: Colors.grey, size: 24),
                                                       ),
                                                     )
                                                   : Image.file(
@@ -833,7 +969,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                                         width: 80,
                                                         height: 80,
                                                         color: Colors.grey.shade200,
-                                                        child: const Icon(Icons.broken_image, color: Colors.grey),
+                                                        child: const Icon(Icons.broken_image, color: Colors.grey, size: 24),
                                                       ),
                                                     ),
                                             ),
@@ -857,16 +993,20 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                                   ),
                                                 ],
                                               ),
-                                              child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                              child: const Icon(
+                                                Icons.close,
+                                                size: 14,
+                                                color: Colors.white,
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   )),
-                              if (_photos.length < 4)
+                              if (_photos.length < 3)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
+                                  padding: const EdgeInsets.only(top: 6.0),
                                   child: GestureDetector(
                                     onTap: () => _capturePhoto(isClosure: false),
                                     child: Container(
@@ -874,18 +1014,21 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                       height: 80,
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFF5F7FA),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(6),
                                         border: Border.all(
-                                          color: const Color(0xFF00E5FF).withValues(alpha: 0.6),
+                                          color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
                                           width: 1.5,
                                         ),
                                       ),
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          const Icon(Icons.add_a_photo_outlined, color: Color(0xFF00897B), size: 26),
-                                          const SizedBox(height: 4),
-                                          Text('Add Photo', style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.bold)),
+                                          const Icon(Icons.add_a_photo_outlined, color: Color(0xFF00E5FF), size: 24),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Add Photo',
+                                            style: TextStyle(fontSize: 9, color: Colors.grey[600], fontWeight: FontWeight.bold),
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -897,10 +1040,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
-                  // Card 4: Observation Notes
-                  _buildCard(
+                  // Card 4: Observation Notes (Matches AuditTaskScreen notes card)
+                  _buildElectricCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -928,11 +1071,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                               ],
                             ),
                             alignLabelWithHint: true,
-                            prefixIcon: const Padding(
-                              padding: EdgeInsets.only(bottom: 40),
-                              child: Icon(Icons.visibility_outlined, color: Color(0xFF1A237E), size: 20),
-                            ),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+                            ),
                             filled: true,
                             fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                             contentPadding: const EdgeInsets.all(16),
@@ -946,11 +1089,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                           decoration: InputDecoration(
                             labelText: 'Remarks / Additional Notes',
                             alignLabelWithHint: true,
-                            prefixIcon: const Padding(
-                              padding: EdgeInsets.only(bottom: 20),
-                              child: Icon(Icons.comment_outlined, color: Color(0xFF1A237E), size: 20),
-                            ),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+                            ),
                             filled: true,
                             fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                             contentPadding: const EdgeInsets.all(16),
@@ -959,11 +1102,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
-                  // Card 5: Root Cause Dropdown
+                  // Card 5: Root Cause Dropdown (If available)
                   if (_rootCauses.isNotEmpty) ...[
-                    _buildCard(
+                    _buildElectricCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -982,8 +1125,11 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                             isExpanded: true,
                             decoration: InputDecoration(
                               labelText: 'Select Root Cause',
-                              prefixIcon: const Icon(Icons.account_tree_outlined, color: Color(0xFF1A237E), size: 20),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+                              ),
                               filled: true,
                               fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1003,12 +1149,12 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                   ],
 
-                  // Card 6: On-Spot Correction (OSC)
-                  if (_status == 'Not OK') ...[
-                    _buildCard(
+                  // Card 6: On-Spot Correction (Visible if Not OK or already corrected)
+                  if (_status == 'Not OK' || _isCorrected) ...[
+                    _buildElectricCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1041,6 +1187,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                               ),
                               Switch(
                                 value: _isCorrected,
+                                activeTrackColor: Colors.green.withValues(alpha: 0.5),
                                 activeThumbColor: Colors.green,
                                 onChanged: (val) => setState(() => _isCorrected = val),
                               ),
@@ -1055,6 +1202,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                 labelText: 'Closure Remark *',
                                 hintText: 'How was this issue resolved?',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+                                ),
                                 filled: true,
                                 fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
                                 contentPadding: const EdgeInsets.all(14),
@@ -1096,7 +1247,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                   ],
 
                   const SizedBox(height: 40),
@@ -1107,22 +1258,22 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
         ],
       ),
 
-      // Bottom Bar
+      // Bottom Bar (Matches AuditTaskScreen clean styling)
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16.0),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+              color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.05),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
             ),
           ],
         ),
         child: SafeArea(
           child: SizedBox(
-            height: 52,
+            height: 50,
             child: ElevatedButton.icon(
               onPressed: _saveCheckpoint,
               icon: const Icon(Icons.check_circle_outline, size: 20),
@@ -1133,8 +1284,8 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF00897B),
                 foregroundColor: Colors.white,
-                elevation: 3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
               ),
             ),
           ),
@@ -1143,7 +1294,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     );
   }
 
-  Widget _buildCard({required Widget child}) {
+  Widget _buildElectricCard({required Widget child}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
@@ -1152,13 +1303,18 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
         boxShadow: [
           BoxShadow(
             color: isDark ? Colors.black.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: const Color(0xFF1A237E).withValues(alpha: isDark ? 0.05 : 0.02),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
           ),
         ],
         border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1), width: 1),
       ),
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(18.0),
       child: child,
     );
   }
@@ -1171,38 +1327,234 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     required VoidCallback onTap,
     bool compact = false,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
         decoration: BoxDecoration(
-          color: isSelected ? color : color.withValues(alpha: isDark ? 0.08 : 0.05),
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? color : Theme.of(context).cardColor,
           border: Border.all(
-            color: isSelected ? color : color.withValues(alpha: 0.3),
+            color: isSelected ? color : Theme.of(context).dividerColor.withValues(alpha: 0.1),
             width: isSelected ? 2 : 1,
           ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : null,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
           children: [
             Icon(
               icon,
-              size: compact ? 16 : 18,
-              color: isSelected ? Colors.white : color,
+              color: isSelected ? Colors.white : Colors.grey[500],
+              size: compact ? 18 : 24,
             ),
-            const SizedBox(width: 6),
+            const SizedBox(height: 6),
             Text(
               label,
               style: TextStyle(
-                fontSize: compact ? 12 : 14,
-                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                fontSize: compact ? 11 : 13,
                 fontFamily: 'Outfit',
-                color: isSelected ? Colors.white : color,
+                letterSpacing: 0.5,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Modern Searchable Reference Picker Bottom Sheet
+class _ReferencePickerSheet extends StatefulWidget {
+  final List<String> references;
+  final String? selectedReference;
+  final ValueChanged<String> onSelected;
+
+  const _ReferencePickerSheet({
+    required this.references,
+    required this.selectedReference,
+    required this.onSelected,
+  });
+
+  @override
+  State<_ReferencePickerSheet> createState() => _ReferencePickerSheetState();
+}
+
+class _ReferencePickerSheetState extends State<_ReferencePickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  List<String> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = List.from(widget.references);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onFilter(String query) {
+    final q = query.trim().toLowerCase();
+    setState(() {
+      if (q.isEmpty) {
+        _filtered = List.from(widget.references);
+      } else {
+        _filtered = widget.references.where((r) => r.toLowerCase().contains(q)).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.70,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  const Text(
+                    'Select Reference',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Outfit',
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _onFilter,
+                style: const TextStyle(fontSize: 14, fontFamily: 'Outfit'),
+                decoration: InputDecoration(
+                  hintText: 'Search reference (e.g. Safety, ISO, WTG)...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onFilter('');
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
+                  ),
+                  filled: true,
+                  fillColor: isDark ? Colors.black26 : const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+              ),
+            ),
+            const Divider(height: 16),
+
+            // Reference List
+            Expanded(
+              child: _filtered.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No matching references',
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                          ),
+                          if (_searchController.text.trim().isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              onPressed: () {
+                                final customRef = _searchController.text.trim();
+                                widget.onSelected(customRef);
+                                Navigator.pop(context);
+                              },
+                              icon: const Icon(Icons.add, size: 18),
+                              label: Text('Use "${_searchController.text.trim()}" as Reference'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _filtered.length,
+                      itemBuilder: (context, index) {
+                        final ref = _filtered[index];
+                        final isSelected = widget.selectedReference == ref;
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                          leading: Icon(
+                            isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                            color: isSelected ? const Color(0xFF00897B) : Colors.grey,
+                            size: 20,
+                          ),
+                          title: Text(
+                            ref,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected ? const Color(0xFF00897B) : Theme.of(context).colorScheme.onSurface,
+                              fontFamily: 'Outfit',
+                            ),
+                          ),
+                          onTap: () {
+                            widget.onSelected(ref);
+                            Navigator.pop(context);
+                          },
+                        );
+                      },
+                    ),
             ),
           ],
         ),

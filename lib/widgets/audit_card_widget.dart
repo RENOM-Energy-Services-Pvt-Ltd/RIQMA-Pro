@@ -108,32 +108,37 @@ class AuditCard extends StatelessWidget {
                        _buildIndicatorTag(pending == 0 ? 'COMPLETE' : '${(progress * 100).toInt()}%', color),
                     ],
                   ),
-                  const Spacer(),
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15, // Reduced from 19
-                      fontWeight: FontWeight.bold, // Switched from w900 for sharper look
-                      color: Theme.of(context).colorScheme.onSurface,
-                      height: 1.1,
-                      letterSpacing: -0.2,
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          height: 1.15,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 8),
                   
                   // Stats Row - Wide rounded boxes
                   Row(
                     children: [
                       Expanded(child: _buildPillStat('OK', ok, const Color(0xFF059669))),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Expanded(child: _buildPillStat('NOK', notOk, const Color(0xFFDC2626))),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Expanded(child: _buildPillStat('P', pending, const Color(0xFFD97706))),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   
                   // Progress Bar
                   ClipRRect(
@@ -142,16 +147,16 @@ class AuditCard extends StatelessWidget {
                       value: progress,
                       backgroundColor: color.withValues(alpha: 0.15),
                       valueColor: AlwaysStoppedAnimation<Color>(color),
-                      minHeight: 6, // Slimmer bar
+                      minHeight: 5,
                     ),
                   ),
                   if (onAddNewNc != null) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     InkWell(
                       onTap: onAddNewNc,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        padding: const EdgeInsets.symmetric(vertical: 5),
                         decoration: BoxDecoration(
                           color: const Color(0xFFD32F2F).withValues(alpha: isDark ? 0.2 : 0.08),
                           borderRadius: BorderRadius.circular(8),
@@ -163,8 +168,8 @@ class AuditCard extends StatelessWidget {
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add_circle_outline_rounded, size: 14, color: Color(0xFFD32F2F)),
-                            SizedBox(width: 5),
+                            Icon(Icons.add_circle_outline_rounded, size: 13, color: Color(0xFFD32F2F)),
+                            SizedBox(width: 4),
                             Text(
                               'Add New NC',
                               style: TextStyle(
