@@ -52,7 +52,7 @@ class AppUpdateService {
   Future<bool> canRequestPackageInstalls() async {
     if (!Platform.isAndroid) return true;
     try {
-      final bool? canInstall =
+      final canInstall =
           await _installerChannel.invokeMethod<bool>('canRequestPackageInstalls');
       return canInstall ?? true;
     } catch (e) {
@@ -65,11 +65,23 @@ class AppUpdateService {
   Future<bool> openInstallPermissionSettings() async {
     if (!Platform.isAndroid) return true;
     try {
-      final bool? opened =
+      final opened =
           await _installerChannel.invokeMethod<bool>('openInstallPermissionSettings');
       return opened ?? false;
     } catch (e) {
       debugPrint('AppUpdateService: Error opening install settings: $e');
+      return false;
+    }
+  }
+
+  /// Open browser to download APK directly
+  Future<bool> openBrowser(String url) async {
+    try {
+      final opened =
+          await _installerChannel.invokeMethod<bool>('openBrowser', {'url': url});
+      return opened ?? false;
+    } catch (e) {
+      debugPrint('AppUpdateService: Error opening browser: $e');
       return false;
     }
   }
@@ -84,23 +96,36 @@ class AppUpdateService {
     return File('${tempDir.path}/$fileName');
   }
 
-  /// Clean obsolete/stale update APK files from cache
+  /// Get the partial (.part) download file for resumable downloading
+  Future<File> getPartialApkFile([String? version]) async {
+    final tempDir = await getTemporaryDirectory();
+    final cleanVersion = (version ?? '').replaceAll('v', '').trim();
+    final fileName = cleanVersion.isNotEmpty
+        ? 'riqma_update_v$cleanVersion.part'
+        : 'riqma_update.part';
+    return File('${tempDir.path}/$fileName');
+  }
+
+  /// Clean obsolete/stale update APK files and partial files from cache
   Future<void> cleanOldApks({String? keepVersion}) async {
     try {
       final tempDir = await getTemporaryDirectory();
       final dir = Directory(tempDir.path);
       if (await dir.exists()) {
         final cleanKeep = (keepVersion ?? '').replaceAll('v', '').trim();
-        final keepFileName = cleanKeep.isNotEmpty ? 'riqma_update_v$cleanKeep.apk' : null;
+        final keepApk = cleanKeep.isNotEmpty ? 'riqma_update_v$cleanKeep.apk' : null;
+        final keepPart = cleanKeep.isNotEmpty ? 'riqma_update_v$cleanKeep.part' : null;
         await for (final entity in dir.list()) {
           if (entity is File && entity.path.contains('riqma_update')) {
-            if (keepFileName == null || !entity.path.endsWith(keepFileName)) {
-              try {
-                await entity.delete();
-                debugPrint('AppUpdateService: Deleted stale APK: ${entity.path}');
-              } catch (e) {
-                debugPrint('AppUpdateService: Error deleting ${entity.path}: $e');
-              }
+            final fileName = entity.uri.pathSegments.last;
+            if (keepApk != null && (fileName == keepApk || fileName == keepPart)) {
+              continue; // Keep current target version files
+            }
+            try {
+              await entity.delete();
+              debugPrint('AppUpdateService: Deleted stale file: ${entity.path}');
+            } catch (e) {
+              debugPrint('AppUpdateService: Error deleting ${entity.path}: $e');
             }
           }
         }
@@ -276,67 +301,187 @@ class AppUpdateService {
     }
   }
 
-  /// Downloads APK directly and launches Android Package Installer
+  /// Downloads APK directly with multi-pass auto-retries, resumable HTTP range chunks, and launches installer
   Future<void> downloadAndInstall({
     required String apkUrl,
     required String targetVersion,
-    required void Function(double progress, int receivedBytes, int totalBytes) onProgress,
+    required void Function(double progress, int receivedBytes, int totalBytes, [String? statusText]) onProgress,
   }) async {
-    // 1. Clean old APKs from cache first
     await cleanOldApks(keepVersion: targetVersion);
 
-    final client = http.Client();
     final apkFile = await getDownloadedApkFile(targetVersion);
+    final partFile = await getPartialApkFile(targetVersion);
 
-    try {
-      final request = http.Request('GET', Uri.parse(apkUrl));
-      final response = await client.send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('Download failed with status: ${response.statusCode}');
+    // If fully downloaded APK already exists and is valid (> 25MB), install directly
+    if (await apkFile.exists()) {
+      final size = await apkFile.length();
+      if (size > 25 * 1024 * 1024) {
+        return installDownloadedApk(targetVersion);
+      } else {
+        try {
+          await apkFile.delete();
+        } catch (_) {}
       }
+    }
 
-      final totalBytes = response.contentLength ?? 0;
-      var receivedBytes = 0;
+    const maxRetries = 10;
+    var attempt = 0;
+    var totalBytes = 0;
 
-      if (await apkFile.exists()) {
-        await apkFile.delete();
-      }
+    while (attempt < maxRetries) {
+      attempt++;
+      HttpClient? client;
+      IOSink? sink;
 
-      final sink = apkFile.openWrite();
+      try {
+        client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 45)
+          ..idleTimeout = const Duration(seconds: 45);
 
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        if (totalBytes > 0) {
-          final progress = receivedBytes / totalBytes;
-          onProgress(progress, receivedBytes, totalBytes);
+        var existingBytes = 0;
+        if (await partFile.exists()) {
+          existingBytes = await partFile.length();
         }
+
+        // Resolve redirects manually to ensure Range header is preserved across CDN domains
+        var currentUri = Uri.parse(apkUrl);
+        HttpClientResponse? response;
+
+        for (var redirect = 0; redirect < 5; redirect++) {
+          final request = await client.getUrl(currentUri);
+          request.followRedirects = false;
+          request.headers.add('User-Agent', 'RIQMA-Pro-App');
+          request.headers.add('Accept', '*/*');
+
+          if (existingBytes > 0) {
+            request.headers.add('Range', 'bytes=$existingBytes-');
+          }
+
+          response = await request.close();
+
+          if (response.isRedirect) {
+            final location = response.headers.value(HttpHeaders.locationHeader);
+            if (location == null || location.isEmpty) {
+              throw Exception('Redirect location header missing');
+            }
+            currentUri = Uri.parse(location);
+            await response.drain<void>();
+          } else {
+            break;
+          }
+        }
+
+        if (response == null) {
+          throw Exception('Failed to obtain HTTP response');
+        }
+
+        final statusCode = response.statusCode;
+
+        // 416 = Range Not Satisfiable (e.g. corrupt part file or file changed on server)
+        if (statusCode == HttpStatus.requestedRangeNotSatisfiable) {
+          await response.drain<void>();
+          if (await partFile.exists()) {
+            await partFile.delete();
+          }
+          existingBytes = 0;
+          continue; // retry fresh from 0
+        }
+
+        final isPartial = statusCode == HttpStatus.partialContent;
+        if (statusCode != HttpStatus.ok && !isPartial) {
+          await response.drain<void>();
+          throw Exception('Server returned status $statusCode');
+        }
+
+        // Determine total expected size
+        if (isPartial) {
+          final contentRange = response.headers.value('content-range');
+          if (contentRange != null && contentRange.contains('/')) {
+            final totalStr = contentRange.split('/').last.trim();
+            totalBytes = int.tryParse(totalStr) ?? 0;
+          }
+          if (totalBytes <= 0 && response.contentLength > 0) {
+            totalBytes = existingBytes + response.contentLength;
+          }
+        } else {
+          totalBytes = response.contentLength > 0 ? response.contentLength : 0;
+          if (await partFile.exists()) {
+            await partFile.delete();
+          }
+          existingBytes = 0;
+        }
+
+        sink = partFile.openWrite(
+          mode: isPartial ? FileMode.writeOnlyAppend : FileMode.writeOnly,
+        );
+
+        var currentBytes = existingBytes;
+
+        if (totalBytes > 0) {
+          final p = (currentBytes / totalBytes).clamp(0.0, 1.0);
+          onProgress(p, currentBytes, totalBytes);
+        }
+
+        await for (final chunk in response) {
+          sink.add(chunk);
+          currentBytes += chunk.length;
+          if (totalBytes > 0) {
+            final p = (currentBytes / totalBytes).clamp(0.0, 1.0);
+            onProgress(p, currentBytes, totalBytes);
+          }
+        }
+
+        await sink.flush();
+        await sink.close();
+        sink = null;
+
+        final finalSize = await partFile.length();
+        if (totalBytes > 0 && finalSize < totalBytes) {
+          throw Exception('Stream closed before full download ($finalSize of $totalBytes bytes)');
+        }
+        if (finalSize < 25 * 1024 * 1024) {
+          throw Exception('Downloaded file is unexpectedly small ($finalSize bytes)');
+        }
+
+        // Success! Rename .part to final .apk
+        if (await apkFile.exists()) {
+          await apkFile.delete();
+        }
+        await partFile.rename(apkFile.path);
+        break; // Complete
+      } catch (e) {
+        debugPrint('AppUpdateService: Download attempt $attempt/$maxRetries error: $e');
+
+        try {
+          await sink?.flush();
+          await sink?.close();
+        } catch (_) {}
+
+        if (attempt >= maxRetries) {
+          throw Exception(
+            'Download was interrupted due to weak connection. Tap Resume Download to continue.',
+          );
+        }
+
+        final saved = await partFile.exists() ? await partFile.length() : 0;
+        if (totalBytes > 0 && saved > 0) {
+          final p = (saved / totalBytes).clamp(0.0, 1.0);
+          onProgress(
+            p,
+            saved,
+            totalBytes,
+            'Connection dropped. Auto-reconnecting (${attempt + 1}/$maxRetries)...',
+          );
+        }
+
+        await Future<void>.delayed(Duration(milliseconds: 1500 * attempt));
+      } finally {
+        client?.close(force: true);
       }
-
-      await sink.flush();
-      await sink.close();
-    } finally {
-      client.close();
     }
 
-    // Pre-Install Permission Check
-    final hasPermission = await canRequestPackageInstalls();
-    if (!hasPermission) {
-      throw const PermissionDeniedException(
-        'Permission denied: android.permission.REQUEST_INSTALL_PACKAGES',
-      );
-    }
-
-    // Launch the Android System Package Installer
-    final result = await OpenFile.open(
-      apkFile.path,
-      type: 'application/vnd.android.package-archive',
-    );
-
-    if (result.type != ResultType.done) {
-      throw Exception('Failed to open installer: ${result.message}');
-    }
+    // Step 2: Verification and installer launch
+    await installDownloadedApk(targetVersion);
   }
 
   /// Version comparison helper

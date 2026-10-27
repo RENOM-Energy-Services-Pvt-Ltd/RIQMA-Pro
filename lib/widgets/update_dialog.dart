@@ -172,25 +172,37 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
     setState(() {
       _isDownloading = true;
       _errorMessage = null;
-      _progress = 0.0;
-      _downloadStatus = 'Starting download...';
+      if (force) {
+        _progress = 0.0;
+      }
+      _downloadStatus = _progress > 0 ? 'Resuming download...' : 'Starting download...';
     });
 
     try {
       if (force) {
         await AppUpdateService.instance.cleanOldApks();
+        final partFile = await AppUpdateService.instance.getPartialApkFile(widget.updateInfo.latestVersion);
+        if (await partFile.exists()) {
+          try {
+            await partFile.delete();
+          } catch (_) {}
+        }
       }
 
       await AppUpdateService.instance.downloadAndInstall(
         apkUrl: widget.updateInfo.apkUrl,
         targetVersion: widget.updateInfo.latestVersion,
-        onProgress: (progress, received, total) {
+        onProgress: (progress, received, total, [statusText]) {
           if (!mounted) return;
           final receivedMb = (received / (1024 * 1024)).toStringAsFixed(1);
           final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
           setState(() {
             _progress = progress;
-            _downloadStatus = '$receivedMb MB / $totalMb MB (${(progress * 100).toInt()}%)';
+            if (statusText != null && statusText.isNotEmpty) {
+              _downloadStatus = statusText;
+            } else {
+              _downloadStatus = '$receivedMb MB / $totalMb MB (${(progress * 100).toInt()}%)';
+            }
           });
         },
       );
@@ -213,7 +225,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
       }
     } catch (e) {
       if (mounted) {
-        final err = e.toString().replaceAll('Exception: ', '');
+        var err = e.toString().replaceAll('Exception: ', '').trim();
         if (err.contains('REQUEST_INSTALL_PACKAGES') || err.contains('Permission denied')) {
           setState(() {
             _isDownloading = false;
@@ -221,12 +233,23 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
             _needsPermission = true;
           });
           await _openSettings();
-        } else {
-          setState(() {
-            _isDownloading = false;
-            _errorMessage = err;
-          });
+          return;
         }
+
+        // Sanitize technical/long URLs and network exceptions for clean presentation
+        if (err.contains('Connection closed') ||
+            err.contains('ClientException') ||
+            err.contains('SocketException') ||
+            err.contains('HttpException') ||
+            err.contains('githubusercontent.com') ||
+            err.contains('uri=')) {
+          err = 'Download was interrupted due to weak or unstable connection. Tap Resume Download to continue.';
+        }
+
+        setState(() {
+          _isDownloading = false;
+          _errorMessage = err;
+        });
       }
     }
   }
@@ -241,7 +264,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         elevation: 10,
         backgroundColor: Theme.of(context).cardColor,
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -493,10 +516,26 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
                               ? (_hasDownloadedApk ? "I've Enabled It - Install Now" : 'Enable & Update')
                               : (_hasDownloadedApk
                                   ? 'Install Now'
-                                  : (_errorMessage != null ? 'Retry Download' : 'Update Now')),
+                                  : (_errorMessage != null
+                                      ? (_progress > 0 ? 'Resume Download' : 'Retry Download')
+                                      : 'Update Now')),
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                 ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => AppUpdateService.instance.openBrowser(widget.updateInfo.apkUrl),
+                    icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                    label: const Text('Download via Browser'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF00897B),
+                      side: const BorderSide(color: Color(0xFF00897B)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
                 if (_hasDownloadedApk && !_isInstalling) ...[
                   const SizedBox(height: 6),
                   TextButton.icon(
