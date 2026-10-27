@@ -28,7 +28,24 @@ class _SearchableTask {
     required this.subCategoryName,
     required this.subCategoryRef,
     required this.referenceOfTask,
+    this.observation = '',
+    this.score = 0,
   });
+
+  _SearchableTask copyWith({String? observation, double? score}) {
+    return _SearchableTask(
+      taskId: taskId,
+      title: title,
+      description: description,
+      mainCategoryName: mainCategoryName,
+      mainCategoryRef: mainCategoryRef,
+      subCategoryName: subCategoryName,
+      subCategoryRef: subCategoryRef,
+      referenceOfTask: referenceOfTask,
+      observation: observation ?? this.observation,
+      score: score ?? this.score,
+    );
+  }
 }
 
 class AuditSearchScreen extends StatefulWidget {
@@ -46,6 +63,9 @@ class AuditSearchScreen extends StatefulWidget {
 
 class _AuditSearchScreenState extends State<AuditSearchScreen>
     with SingleTickerProviderStateMixin {
+  // Static memory cache of tasks per turbine model to make subsequent opens 0ms instant
+  static final Map<String, List<_SearchableTask>> _tasksCache = {};
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   Timer? _debounceTimer;
@@ -68,7 +88,38 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
 
-    _loadAllTasks();
+    // Fast cache check: If tasks for this turbine model were already fetched in this session,
+    // load immediately with 0 delay and fresh local observations.
+    final cached = _tasksCache[widget.turbineModelRef.id];
+    if (cached != null && cached.isNotEmpty) {
+      _isLoading = false;
+      final allAnswers = AuditManager.instance.getAllAnswers();
+      _allTasks = cached.map((t) {
+        final task = t.copyWith();
+        if (allAnswers.containsKey(t.taskId)) {
+          final answerData = allAnswers[t.taskId] as Map<String, dynamic>?;
+          task.observation = answerData?['observation']?.toString() ?? '';
+        }
+        return task;
+      }).toList();
+      _animController.value = 1.0;
+
+      if (widget.draftId != null) {
+        AuditManager.instance.init(draftId: widget.draftId).then((_) {
+          if (mounted) {
+            final freshAnswers = AuditManager.instance.getAllAnswers();
+            for (var task in _allTasks) {
+              if (freshAnswers.containsKey(task.taskId)) {
+                final answerData = freshAnswers[task.taskId] as Map<String, dynamic>?;
+                task.observation = answerData?['observation']?.toString() ?? '';
+              }
+            }
+          }
+        });
+      }
+    } else {
+      _loadAllTasks();
+    }
 
     // Auto-focus after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,33 +147,46 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
 
       final tasks = <_SearchableTask>[];
 
-      // 1. Get all main categories for this turbine model
-      // 1. Get all relevant main categories
-      final mainCatsSnapshot = await FirebaseFirestore.instance
-          .collection('main_categories')
-          .where('target_models', arrayContains: widget.turbineModelRef.id)
-          .get();
-      
-      final allModelsSnapshot = await FirebaseFirestore.instance
-          .collection('main_categories')
-          .where('is_all_models', isEqualTo: true)
-          .get();
+      // 1. Get all relevant main categories in parallel
+      final snapshots = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('main_categories')
+            .where('target_models', arrayContains: widget.turbineModelRef.id)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('main_categories')
+            .where('is_all_models', isEqualTo: true)
+            .get(),
+      ]);
 
-      final combinedDocs = [...mainCatsSnapshot.docs, ...allModelsSnapshot.docs];
+      final combinedDocs = [...snapshots[0].docs, ...snapshots[1].docs];
       // remove duplicates if any (though unlikely based on schema)
       final uniqueDocs = {for (var doc in combinedDocs) doc.id: doc}.values.toList();
 
       final allAnswers = AuditManager.instance.getAllAnswers();
 
-      for (var mainCatDoc in uniqueDocs) {
+      // 2. Get all sub categories for each main category in parallel
+      final subCatsSnapshots = await Future.wait(
+        uniqueDocs.map(
+          (mainCatDoc) => FirebaseFirestore.instance
+              .collection('sub_categories')
+              .where('main_categories_ref', isEqualTo: mainCatDoc.reference)
+              .get(),
+        ),
+      );
+
+      final applicableSubCats = <({
+        String mainCatName,
+        DocumentReference mainCatRef,
+        String subCatName,
+        DocumentReference subCatRef,
+      })>[];
+
+      for (var i = 0; i < uniqueDocs.length; i++) {
+        final mainCatDoc = uniqueDocs[i];
         final mainCatData = mainCatDoc.data();
         final mainCatName = (mainCatData['name'] as String?) ?? 'Unknown';
-
-        // 2. Get sub categories
-        final subCatsSnapshot = await FirebaseFirestore.instance
-            .collection('sub_categories')
-            .where('main_categories_ref', isEqualTo: mainCatDoc.reference)
-            .get();
+        final subCatsSnapshot = subCatsSnapshots[i];
 
         for (var subCatDoc in subCatsSnapshot.docs) {
           final subCatData = subCatDoc.data();
@@ -131,45 +195,70 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
           final isApplicable = isAllModels || targetModels.contains(widget.turbineModelRef.id);
           if (!isApplicable) continue;
 
-          final subCatName = (subCatData['name'] as String?) ?? 'Unknown';
-
-          // 3. Get tasks
-          final tasksSnapshot = await FirebaseFirestore.instance
-              .collection('tasks')
-              .where('sub_categories_ref', isEqualTo: subCatDoc.reference)
-              .get();
-
-          for (var taskDoc in tasksSnapshot.docs) {
-            final data = taskDoc.data();
-            final taskId = taskDoc.id;
-            
-            final task = _SearchableTask(
-              taskId: taskId,
-              title: (data['title'] as String?) ?? '',
-              description: (data['description'] as String?) ?? '',
-              mainCategoryName: mainCatName,
-              mainCategoryRef: mainCatDoc.reference,
-              subCategoryName: subCatName,
-              subCategoryRef: subCatDoc.reference,
-              referenceOfTask: data['referenceoftask']?.toString() ?? '',
-            );
-
-            // Attach local observation if exists
-            if (allAnswers.containsKey(taskId)) {
-              final answerData = allAnswers[taskId] as Map<String, dynamic>?;
-              task.observation = answerData?['observation']?.toString() ?? '';
-            }
-
-            tasks.add(task);
-          }
+          applicableSubCats.add((
+            mainCatName: mainCatName,
+            mainCatRef: mainCatDoc.reference,
+            subCatName: (subCatData['name'] as String?) ?? 'Unknown',
+            subCatRef: subCatDoc.reference,
+          ));
         }
       }
 
+      // 3. Get all tasks for all applicable subcategories in parallel
+      final taskSnapshots = await Future.wait(
+        applicableSubCats.map(
+          (subCat) => FirebaseFirestore.instance
+              .collection('tasks')
+              .where('sub_categories_ref', isEqualTo: subCat.subCatRef)
+              .get(),
+        ),
+      );
+
+      for (var i = 0; i < applicableSubCats.length; i++) {
+        final subCat = applicableSubCats[i];
+        final tasksSnapshot = taskSnapshots[i];
+
+        for (var taskDoc in tasksSnapshot.docs) {
+          final data = taskDoc.data();
+          final taskId = taskDoc.id;
+
+          final task = _SearchableTask(
+            taskId: taskId,
+            title: (data['title'] as String?) ?? '',
+            description: (data['description'] as String?) ?? '',
+            mainCategoryName: subCat.mainCatName,
+            mainCategoryRef: subCat.mainCatRef,
+            subCategoryName: subCat.subCatName,
+            subCategoryRef: subCat.subCatRef,
+            referenceOfTask: data['referenceoftask']?.toString() ?? '',
+          );
+
+          // Attach local observation if exists
+          if (allAnswers.containsKey(taskId)) {
+            final answerData = allAnswers[taskId] as Map<String, dynamic>?;
+            task.observation = answerData?['observation']?.toString() ?? '';
+          }
+
+          tasks.add(task);
+        }
+      }
+
+      // Store in memory cache for instant future loads
+      _tasksCache[widget.turbineModelRef.id] = tasks;
+
       if (mounted) {
-        setState(() {
-          _allTasks = tasks;
-          _isLoading = false;
-        });
+        _allTasks = tasks;
+        _isLoading = false;
+
+        // If user already typed query while loading was in progress,
+        // execute search immediately with the loaded tasks!
+        final currentText = _searchController.text.trim();
+        if (currentText.isNotEmpty) {
+          _debounceTimer?.cancel();
+          _performSearch(_searchController.text);
+        } else {
+          setState(() {});
+        }
         unawaited(_animController.forward());
       }
     } catch (e) {
@@ -198,16 +287,22 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
     final trimmed = query.trim().toLowerCase();
     final queryNorm = _normalize(query);
     if (trimmed.isEmpty || queryNorm.isEmpty) {
-      setState(() {
-        _query = '';
-        _filteredTasks = [];
-      });
+      if (mounted) {
+        setState(() {
+          _query = '';
+          _filteredTasks = [];
+        });
+      }
       return;
     }
 
-    setState(() {
-      _query = trimmed;
-    });
+    _query = trimmed;
+
+    // While tasks are still loading, do not search against empty _allTasks;
+    // _loadAllTasks will automatically trigger _performSearch as soon as loading finishes.
+    if (_isLoading) {
+      return;
+    }
 
     final queryWords =
         trimmed.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
@@ -322,8 +417,17 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
         ),
       ),
     ).then((_) {
-      // Refresh audit status on return
-      if (mounted) setState(() {});
+      // Refresh audit status and observations on return
+      if (mounted) {
+        final allAnswers = AuditManager.instance.getAllAnswers();
+        for (var t in _allTasks) {
+          if (allAnswers.containsKey(t.taskId)) {
+            final answerData = allAnswers[t.taskId] as Map<String, dynamic>?;
+            t.observation = answerData?['observation']?.toString() ?? '';
+          }
+        }
+        setState(() {});
+      }
     });
   }
 
@@ -517,6 +621,7 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
                         duration: const Duration(milliseconds: 300),
                         child: _isLoading
                             ? const Padding(
+                                key: ValueKey('loading'),
                                 padding: EdgeInsets.all(12),
                                 child: SizedBox(
                                   width: 20,
@@ -527,20 +632,28 @@ class _AuditSearchScreenState extends State<AuditSearchScreen>
                                   ),
                                 ),
                               )
-                            : const Icon(Icons.search_rounded,
-                                color: Color(0xFF1A237E)),
+                            : const Icon(
+                                Icons.search_rounded,
+                                key: ValueKey('search'),
+                                color: Color(0xFF1A237E),
+                              ),
                       ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded,
-                                  color: Colors.grey),
-                              onPressed: () {
-                                _searchController.clear();
-                                _performSearch('');
-                                _focusNode.requestFocus();
-                              },
-                            )
-                          : null,
+                      suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _searchController,
+                        builder: (context, value, child) {
+                          if (value.text.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return IconButton(
+                            icon: const Icon(Icons.clear_rounded, color: Colors.grey),
+                            onPressed: () {
+                              _searchController.clear();
+                              _performSearch('');
+                              _focusNode.requestFocus();
+                            },
+                          );
+                        },
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
