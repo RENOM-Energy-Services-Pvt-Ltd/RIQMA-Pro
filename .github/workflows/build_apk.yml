@@ -60,15 +60,14 @@ jobs:
           name: RIQMA Pro ${{ steps.get_version.outputs.tag }}
           body: |
             ### RIQMA Pro ${{ steps.get_version.outputs.tag }} Update
-            - Bulletproof Photo Upload Engine with Zero-Photo-Loss Guarantee:
-              * Resilient local photo retention during partial or failed uploads
-              * Dedicated bandwidth sequential uploads with adaptive exponential backoff
-              * Automatic multi-pass auto-retries (up to 3 passes) for weak site connections
-              * Direct camera capture & gallery album import fallback protection
-              * Strict verification gate: 100% photo validation before audit submission
-              * Interactive recovery modal with 1-click retry for pending photos
-            - Direct In-App 1-Click Update System
-            - Next-Gen Interactive Bottom Navigation Bar
+            - Zero-Data-Loss Offline & Hybrid Audit Protection:
+              * Fail-safe JSON serialization with universal fallback encoder (prevents DocumentReference crashes)
+              * Atomic file writing with automatic .bak backup and corruption recovery
+              * App-kill protection: immediate disk flush on lifecycle pause/inactive/detached
+              * Seamless hybrid online/offline unification (auto-merges planned and unplanned drafts for the same turbine)
+              * Guarded reference resolution (zero dummy overwrites on reconnect)
+            - Resumable Range-Engine In-App Updater with Auto-Retry
+            - Interactive Bottom Navigation Bar
             - Dual Authentication: Firebase Auth with Renom Server fallback
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false
