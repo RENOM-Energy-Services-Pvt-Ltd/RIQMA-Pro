@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -11,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/activity_log_service.dart';
 import '../services/audit_manager.dart';
@@ -67,7 +69,11 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     // Initialize AuditManager with a specific draft ID for this session
     // This prevents data mixing between different turbines/plans
     final uniqueDraftId = '${widget.planId ?? "unplanned"}_${widget.turbineId}';
-    AuditManager.instance.init(draftId: uniqueDraftId);
+    AuditManager.instance.init(draftId: uniqueDraftId).then((_) {
+      if (mounted) {
+        _recalculateStatsFromLocal();
+      }
+    });
     AuditManager.instance.saveDraftMetadata(
       draftId: uniqueDraftId,
       siteId: widget.siteId,
@@ -266,7 +272,11 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
     // Data Preparation - deep copy
     final finalData = <String, Map<String, dynamic>>{};
     allAnswers.forEach((key, value) {
-      finalData[key] = Map<String, dynamic>.from(value as Map);
+      final map = Map<String, dynamic>.from(value as Map);
+      if (map['is_corrected'] == true) {
+        map['status'] = 'Not OK';
+      }
+      finalData[key] = map;
     });
 
     // Count photos and resolve paths to verify local presence
@@ -708,6 +718,45 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
         } catch (e) {
           debugPrint('Error fetching additional audit details: $e');
         }
+      }
+
+      // ── Pre-Submission Data Sanitization & Enrichment Gate ──
+      // Guarantee that zero placeholder/corrupted strings (e.g. 'Loading...', 'N/A') are submitted
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedRefs = <String, String>{};
+        final cJson = prefs.getString('cached_reference_names_map');
+        if (cJson != null && cJson.isNotEmpty) {
+          final decoded = jsonDecode(cJson);
+          if (decoded is Map) {
+            decoded.forEach((k, v) => cachedRefs[k.toString()] = v.toString());
+          }
+        }
+
+        for (final entry in finalData.entries) {
+          final td = entry.value;
+          final refName = td['reference_name']?.toString().trim() ?? '';
+          if (refName.toLowerCase() == 'loading...' || refName.toLowerCase() == 'n/a' || refName.isEmpty) {
+            // Attempt recovery from reference_id or reference_ref
+            final refId = td['reference_id']?.toString() ??
+                (td['reference_ref'] is DocumentReference
+                    ? (td['reference_ref'] as DocumentReference).id
+                    : null);
+            if (refId != null && cachedRefs.containsKey(refId)) {
+              td['reference_name'] = cachedRefs[refId]!;
+            } else if (td.containsKey('referenceoftask') &&
+                td['referenceoftask'].toString().trim().isNotEmpty &&
+                td['referenceoftask'].toString().trim().toLowerCase() != 'loading...' &&
+                td['referenceoftask'].toString().trim().toLowerCase() != 'n/a') {
+              td['reference_name'] = td['referenceoftask'].toString().trim();
+            } else {
+              // Strip corrupted placeholder so web self-review displays clean 'Select Reference'
+              td.remove('reference_name');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error during pre-submission reference sanitization: $e');
       }
 
       // ── WriteBatch: Atomic Firestore Commit ──
@@ -1239,6 +1288,8 @@ class _AuditMainCategoriesScreenState extends State<AuditMainCategoriesScreen> {
   /// Concurrently loads tasks for all categories so all cards show up at once without skeletons popping in piecemeal.
   Future<void> _loadAllCategoryStats() async {
     final sessionId = ++_statsLoadSession;
+    final uniqueDraftId = '${widget.planId ?? "unplanned"}_${widget.turbineId}';
+    await AuditManager.instance.init(draftId: uniqueDraftId);
     final allAnswers = AuditManager.instance.getAllAnswers();
 
     try {

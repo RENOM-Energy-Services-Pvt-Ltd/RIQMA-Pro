@@ -173,7 +173,7 @@ class AuditorSelfReviewScreen extends StatelessWidget {
                           children: [
                             _buildSummaryPill('NOT CONFORM', notOkCount, const Color(0xFF991B1B)), // Deep crimson
                             const SizedBox(width: 12),
-                            _buildSummaryPill('OSC (FIXED)', correctedCount, Colors.teal), 
+                            _buildSummaryPill('OSC (CORRECTED)', correctedCount, Colors.teal), 
                           ],
                         ),
                         const SizedBox(height: 12),

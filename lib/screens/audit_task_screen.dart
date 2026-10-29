@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,8 +10,8 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_settings_provider.dart';
 import '../services/audit_manager.dart';
 import 'audit_search_screen.dart';
@@ -187,8 +188,29 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
   void initState() {
     super.initState();
     _loadSavedData();
+    _loadCachedReferences();
     _fetchReferences();
     _fetchRootCauses();
+  }
+
+  Future<void> _loadCachedReferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString('cached_reference_names_map');
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final decoded = jsonDecode(cachedJson);
+        if (decoded is Map && mounted) {
+          setState(() {
+            decoded.forEach((key, value) {
+              _referenceNames[key.toString()] = value.toString();
+            });
+          });
+          _propagateResolvedReferences();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading cached references: $e');
+    }
   }
 
   Future<void> _fetchRootCauses() async {
@@ -217,19 +239,65 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
             _referenceNames[doc.id] = data['name']?.toString() ?? 'Unknown Reference';
           }
         });
+
+        // Persist to local cache for offline/weak network resilience
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cached_reference_names_map', jsonEncode(_referenceNames));
+        } catch (_) {}
+
+        // Retroactively heal/update any answers in current audit that were missing reference_name
+        _propagateResolvedReferences();
       }
     } catch (e) {
       debugPrint('Error fetching references: $e');
     }
   }
 
+  void _propagateResolvedReferences() {
+    if (_referenceNames.isEmpty || _tasks.isEmpty) return;
+    for (final taskDoc in _tasks) {
+      final taskId = taskDoc.id;
+      // CRITICAL GUARD: Only propagate references for tasks the user has actually answered!
+      // Never create empty dummy answers for unanswered tasks.
+      if (!auditData.containsKey(taskId)) continue;
+      final currentAnswer = auditData[taskId];
+      if (currentAnswer == null || currentAnswer['status'] == null) continue;
+
+      final taskData = taskDoc.data() as Map<String, dynamic>;
+      if (taskData.containsKey('reference_ref') && taskData['reference_ref'] is DocumentReference) {
+        final refDoc = taskData['reference_ref'] as DocumentReference;
+        final refId = refDoc.id;
+        final refPath = refDoc.path;
+        final resolvedName = _referenceNames[refId];
+        if (resolvedName != null &&
+            resolvedName.isNotEmpty &&
+            resolvedName != 'Loading...' &&
+            resolvedName != 'N/A') {
+          final existing = currentAnswer['reference_name']?.toString() ?? '';
+          if (existing.isEmpty || existing == 'Loading...' || existing == 'N/A') {
+            _updateAnswer(taskId, 'reference_name', resolvedName, shouldSetState: false);
+            _updateAnswer(taskId, 'reference_id', refId, shouldSetState: false);
+            _updateAnswer(taskId, 'reference_ref', refPath, shouldSetState: false);
+          }
+        }
+      }
+    }
+  }
+
   Future<void> _loadSavedData() async {
     // initialize with correct draftId to ensure we load the right file
     await AuditManager.instance.init(draftId: widget.draftId);
+    if (!mounted) return;
     setState(() {
       AuditManager.instance.getAllAnswers().forEach((key, value) {
         if (value is Map) {
-          auditData[key] = Map<String, dynamic>.from(value);
+          final map = Map<String, dynamic>.from(value);
+          if (map['is_corrected'] == true && map['status'] != 'Not OK') {
+            map['status'] = 'Not OK';
+            AuditManager.instance.saveAnswer(key, map);
+          }
+          auditData[key] = map;
         }
       });
     });
@@ -237,6 +305,7 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
 
   @override
   void dispose() {
+    AuditManager.instance.flush();
     _pageController.dispose();
     _isPageScrolling.dispose();
     super.dispose();
@@ -627,27 +696,46 @@ class _AuditTaskScreenState extends State<AuditTaskScreen> {
                       final taskData = taskDoc.data() as Map<String, dynamic>;
                       final taskId = taskDoc.id;
 
-                      // Resolve Reference Name
-                      var referenceName = 'N/A';
+                      // Resolve Reference Name safely without ever falling back to placeholder strings
+                      String? refId;
                       if (taskData.containsKey('reference_ref') && taskData['reference_ref'] is DocumentReference) {
-                        final refId = (taskData['reference_ref'] as DocumentReference<Object?>).id;
-                        referenceName = _referenceNames[refId] ?? 'Loading...';
+                        refId = (taskData['reference_ref'] as DocumentReference).id;
+                      }
+
+                      var referenceName = '';
+                      if (refId != null && _referenceNames.containsKey(refId)) {
+                        referenceName = _referenceNames[refId]!;
                       } else {
-                        referenceName = taskData['referenceoftask']?.toString() ?? 'N/A';
+                        final nativeRef = taskData['referenceoftask']?.toString().trim() ?? '';
+                        if (nativeRef.isNotEmpty && nativeRef != 'N/A' && nativeRef != 'Loading...') {
+                          referenceName = nativeRef;
+                        } else {
+                          referenceName = '';
+                        }
                       }
 
                       return TaskPageItem(
                         key: ValueKey(taskId),
                         taskData: taskData,
-                        referenceName: referenceName, // This is already prioritized in the parent via _referenceNames
+                        referenceName: referenceName.isNotEmpty ? referenceName : 'N/A', // This is already prioritized in the parent via _referenceNames
                         rootCauses: _rootCauses,
                         initialAnswer: auditData[taskId] ?? {},
                         onAnswerChanged: (key, value, {bool shouldSetState = true}) {
                           _updateAnswer(taskId, key, value, shouldSetState: shouldSetState);
                           // Ensure category details and reference name are saved
                           _ensureCategoryDetails(taskId);
-                          if (shouldSetState && auditData[taskId]?['reference_name'] != referenceName) {
-                            _updateAnswer(taskId, 'reference_name', referenceName, shouldSetState: false);
+                          if (referenceName.isNotEmpty &&
+                              referenceName != 'Loading...' &&
+                              referenceName != 'N/A') {
+                            if (auditData[taskId]?['reference_name'] != referenceName) {
+                              _updateAnswer(taskId, 'reference_name', referenceName, shouldSetState: false);
+                            }
+                          }
+                          if (refId != null && auditData[taskId]?['reference_id'] != refId) {
+                            _updateAnswer(taskId, 'reference_id', refId, shouldSetState: false);
+                            final refDoc = taskData['reference_ref'];
+                            final refPath = (refDoc is DocumentReference) ? refDoc.path : refDoc?.toString() ?? refId;
+                            _updateAnswer(taskId, 'reference_ref', refPath, shouldSetState: false);
                           }
                         },
                         onCapturePhoto: () => _capturePhoto(taskId),
@@ -909,6 +997,16 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                         color: const Color(0xFF388E3C), // Sharp vibrant green
                         icon: Icons.check_circle_outline,
                         onTap: () {
+                          if (widget.initialAnswer['is_corrected'] == true) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('This task has an On-Site Correction and remains "Not OK".'),
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
                           widget.onAnswerChanged('status', 'OK');
                           widget.onAnswerChanged('sub_status', null);
                         },
@@ -952,7 +1050,7 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                                     Icon(Icons.check, color: Colors.white, size: 8),
                                     SizedBox(width: 2),
                                     Text(
-                                      'Fixed',
+                                      'Corrected',
                                       style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
                                     ),
                                   ],
@@ -970,6 +1068,16 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                         color: Colors.grey.shade600, // Sleek grey
                         icon: Icons.do_not_disturb_alt,
                         onTap: () {
+                          if (widget.initialAnswer['is_corrected'] == true) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('This task has an On-Site Correction and remains "Not OK".'),
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
                           widget.onAnswerChanged('status', 'NA');
                           widget.onAnswerChanged('sub_status', null);
                         },
@@ -1509,9 +1617,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
     // Local path for preview before upload if needed, though we upload on save
     XFile? pickedImage;
     var isUploading = false;
-    var markAsOk = widget.initialAnswer.containsKey('closure_status') 
-        ? widget.initialAnswer['closure_status'] == 'OK' 
-        : true; // Default to true if no prior attempt
 
     showDialog<void>(
       context: context,
@@ -1620,23 +1725,6 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Text('Mark Task as OK?'),
-                      const Spacer(),
-                      Switch(
-                        value: markAsOk,
-                        activeTrackColor: Colors.green.withValues(alpha: 0.5),
-                        activeThumbColor: Colors.green,
-                        onChanged: (val) {
-                          setDialogState(() {
-                            markAsOk = val;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
                   if (isUploading)
                     const Padding(
                       padding: EdgeInsets.only(top: 16.0),
@@ -1681,13 +1769,9 @@ class _TaskPageItemState extends State<TaskPageItem> with AutomaticKeepAliveClie
                     if (selectedRootCause != null) {
                       widget.onAnswerChanged('root_cause', selectedRootCause);
                     }
-                    widget.onAnswerChanged('closure_status', markAsOk ? 'OK' : 'Not OK');
+                    widget.onAnswerChanged('closure_status', 'Closed');
                     widget.onAnswerChanged('is_corrected', true);
-                    
-                    if (markAsOk) {
-                      widget.onAnswerChanged('status', 'OK');
-                      widget.onAnswerChanged('sub_status', null); // Clear severity if OK
-                    }
+                    widget.onAnswerChanged('status', 'Not OK');
 
                     if (navigator.canPop()) navigator.pop();
                   } else {

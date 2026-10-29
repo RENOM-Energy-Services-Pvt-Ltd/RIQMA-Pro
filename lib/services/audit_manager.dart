@@ -2,34 +2,65 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class AuditManager {
+class AuditManager with WidgetsBindingObserver {
   static final AuditManager instance = AuditManager._internal();
   
   factory AuditManager() {
     return instance;
   }
 
-  AuditManager._internal();
+  AuditManager._internal() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      debugPrint('📱 AuditManager: App lifecycle changed to $state -> Flushing pending saves immediately');
+      flush();
+    }
+  }
 
   Map<String, dynamic> _localData = {};
   String? _currentDraftId;
   Timer? _debounceTimer;
   bool _isSaving = false;
   bool _hasPendingChanges = false;
+  Completer<void>? _initCompleter;
   
   // File name based on draft ID
   String get _fileName => _currentDraftId != null ? 'audit_data_$_currentDraftId.json' : 'current_audit_data.json';
+  String get _bakFileName => '$_fileName.bak';
+  String get _tmpFileName => '$_fileName.tmp';
   
   // Metadata still uses SharedPreferences for quick access
   String get _metadataKey => _currentDraftId != null ? 'audit_metadata_$_currentDraftId' : 'current_audit_metadata';
 
   // Expose current draft ID for debugging
   String? get currentDraftId => _currentDraftId;
+
+  /// Universal fallback serializer so json.encode NEVER throws JsonUnsupportedObjectError
+  static Object? _toEncodable(Object? nonEncodable) {
+    if (nonEncodable is DocumentReference) {
+      return nonEncodable.path;
+    }
+    if (nonEncodable is Timestamp) {
+      return nonEncodable.toDate().toIso8601String();
+    }
+    if (nonEncodable is DateTime) {
+      return nonEncodable.toIso8601String();
+    }
+    return nonEncodable?.toString();
+  }
 
   /// Initialize the service and load existing data
   /// 
@@ -44,46 +75,196 @@ class AuditManager {
     final contextChanged = draftId != null && draftId != _currentDraftId;
     
     if (contextChanged) {
+      // PRE-FLUSH: Save any pending changes for the previous draft BEFORE switching context!
+      if (_hasPendingChanges || _isSaving) {
+        debugPrint('💾 AuditManager: Flushing previous draft ($_currentDraftId) before switching context');
+        await flush();
+      }
       // SWITCH CONTEXT: New draftId provided
       _currentDraftId = draftId;
       _localData = {}; // Clear to load fresh data for new context
       debugPrint('🔄 AuditManager: Switching context to draftId: $draftId');
     }
     
+    // In-flight guard: If an init is already running for this draft, await it
+    if (_initCompleter != null && !_initCompleter!.isCompleted) {
+      await _initCompleter!.future;
+      if (!forceRefresh && _localData.isNotEmpty) {
+        return;
+      }
+    }
+
     // OPTIMIZATION: If data is already loaded and no forceRefresh, skip disk read
     if (_localData.isNotEmpty && !forceRefresh) {
       debugPrint('⚡ AuditManager: Using cached data (${_localData.length} entries)');
       return;
     }
 
+    _initCompleter = Completer<void>();
+
     // Load data from disk
     debugPrint('📂 AuditManager: Loading data from disk for: $_fileName');
     try {
+      var loaded = false;
+      var diskData = <String, dynamic>{};
+
       if (kIsWeb) {
         // Fallback to SharedPreferences for Web
         final prefs = await SharedPreferences.getInstance();
         final jsonString = prefs.getString(_fileName);
-        if (jsonString != null) {
-          _localData = json.decode(jsonString) as Map<String, dynamic>;
-        } else {
-          _localData = {};
+        if (jsonString != null && jsonString.trim().isNotEmpty) {
+          try {
+            diskData = json.decode(jsonString) as Map<String, dynamic>;
+            loaded = true;
+          } catch (_) {}
         }
       } else {
-        // Mobile/Desktop: Use File I/O
+        // Mobile/Desktop: Use File I/O with .bak auto-recovery
         final directory = await getApplicationDocumentsDirectory();
         final file = File('${directory.path}/$_fileName');
+        final bakFile = File('${directory.path}/$_bakFileName');
         
         if (await file.exists()) {
-          final jsonString = await file.readAsString();
-          _localData = json.decode(jsonString) as Map<String, dynamic>;
-        } else {
-          _localData = {};
+          try {
+            final jsonString = await file.readAsString();
+            if (jsonString.trim().isNotEmpty) {
+              final decoded = json.decode(jsonString);
+              if (decoded is Map<String, dynamic>) {
+                diskData = decoded;
+                loaded = true;
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ AuditManager: Primary file $_fileName corrupt: $e. Checking backup...');
+          }
+        }
+
+        // Automatic fallback to .bak if primary was missing or corrupt
+        if (!loaded && await bakFile.exists()) {
+          try {
+            final bakString = await bakFile.readAsString();
+            if (bakString.trim().isNotEmpty) {
+              final decoded = json.decode(bakString);
+              if (decoded is Map<String, dynamic>) {
+                diskData = decoded;
+                loaded = true;
+                debugPrint('🛡️ AuditManager: Successfully restored data from $_bakFileName!');
+                try {
+                  await file.writeAsString(bakString, flush: true);
+                } catch (_) {}
+              }
+            }
+          } catch (e) {
+            debugPrint('❌ AuditManager: Error reading backup draft file: $e');
+          }
         }
       }
+
+      _localData = diskData;
+
+      // Normalize any corrected tasks to strictly 'Not OK'
+      _localData.forEach((key, val) {
+        if (val is Map && val['is_corrected'] == true) {
+          val['status'] = 'Not OK';
+        }
+      });
+
+      // AUTO-RECOVERY & HYBRID MERGING:
+      // If user filled some answers online (planId_turbineId) and some offline (unplanned_turbineId),
+      // merge complementary answers so data is NEVER wiped!
+      await _mergeComplementaryDraftIfAvailable();
+
       debugPrint('✅ AuditManager: Loaded ${_localData.length} entries');
     } catch (e) {
       debugPrint('❌ AuditManager: Error loading data: $e');
       _localData = {};
+    } finally {
+      if (_initCompleter != null && !_initCompleter!.isCompleted) {
+        _initCompleter!.complete();
+      }
+    }
+  }
+
+  /// Automatically merge complementary drafts for the same turbine (e.g. unplanned_T01 and planId_T01)
+  /// to support seamless hybrid online/offline audits without any data wipe.
+  Future<void> _mergeComplementaryDraftIfAvailable() async {
+    if (_currentDraftId == null || _currentDraftId == 'current') return;
+
+    final parts = _currentDraftId!.split('_');
+    if (parts.length < 2) return;
+    final turbineId = parts.sublist(1).join('_');
+    if (turbineId.isEmpty) return;
+
+    final complementaryDraftIds = <String>{};
+    if (_currentDraftId!.startsWith('unplanned_')) {
+      // Current is unplanned; search prefs for any planId_turbineId
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        for (final key in prefs.getKeys()) {
+          if (key.startsWith('audit_metadata_') && key.endsWith('_$turbineId')) {
+            final cId = key.replaceFirst('audit_metadata_', '');
+            if (cId != _currentDraftId && !cId.startsWith('unplanned_')) {
+              complementaryDraftIds.add(cId);
+            }
+          }
+        }
+      } catch (_) {}
+    } else {
+      // Current is planned; check if unplanned_turbineId exists
+      complementaryDraftIds.add('unplanned_$turbineId');
+    }
+
+    if (complementaryDraftIds.isEmpty) return;
+
+    for (final cId in complementaryDraftIds) {
+      try {
+        Map<String, dynamic>? cData;
+        if (kIsWeb) {
+          final prefs = await SharedPreferences.getInstance();
+          final s = prefs.getString('audit_data_$cId.json');
+          if (s != null && s.trim().isNotEmpty) {
+            cData = json.decode(s) as Map<String, dynamic>?;
+          }
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final cFile = File('${directory.path}/audit_data_$cId.json');
+          if (await cFile.exists()) {
+            final s = await cFile.readAsString();
+            if (s.trim().isNotEmpty) {
+              cData = json.decode(s) as Map<String, dynamic>?;
+            }
+          }
+        }
+
+        if (cData != null && cData.isNotEmpty) {
+          var anyMerged = false;
+          cData.forEach((taskId, taskVal) {
+            if (taskVal is Map) {
+              final map = Map<String, dynamic>.from(taskVal);
+              if (!_localData.containsKey(taskId)) {
+                _localData[taskId] = map;
+                anyMerged = true;
+              } else {
+                final existing = _localData[taskId] as Map<String, dynamic>?;
+                final existingStatus = existing?['status'];
+                final newStatus = map['status'];
+                if ((existingStatus == null || existingStatus.toString().isEmpty) &&
+                    (newStatus != null && newStatus.toString().isNotEmpty)) {
+                  _localData[taskId] = map;
+                  anyMerged = true;
+                }
+              }
+            }
+          });
+
+          if (anyMerged) {
+            debugPrint('🤝 AuditManager: Seamlessly merged complementary answers from $cId for turbine $turbineId');
+            _scheduleSave();
+          }
+        }
+      } catch (e) {
+        debugPrint('AuditManager: Error checking complementary draft $cId: $e');
+      }
     }
   }
 
@@ -157,7 +338,17 @@ class AuditManager {
 
   /// Save an answer for a specific task
   void saveAnswer(String taskId, Map<String, dynamic> data) {
-    _localData[taskId] = data;
+    final sanitizedData = Map<String, dynamic>.from(data);
+    if (sanitizedData['is_corrected'] == true) {
+      sanitizedData['status'] = 'Not OK';
+    }
+    // Deep sanitize any DocumentReference or non-serializable objects
+    sanitizedData.forEach((key, val) {
+      if (val is DocumentReference) {
+        sanitizedData[key] = val.path;
+      }
+    });
+    _localData[taskId] = sanitizedData;
     _scheduleSave();
     _touchMetadataTimestamp();
   }
@@ -212,9 +403,11 @@ class AuditManager {
       } else {
         final directory = await getApplicationDocumentsDirectory();
         final file = File('${directory.path}/$_fileName');
-        if (await file.exists()) {
-          await file.delete();
-        }
+        final bakFile = File('${directory.path}/$_bakFileName');
+        final tmpFile = File('${directory.path}/$_tmpFileName');
+        if (await file.exists()) await file.delete();
+        if (await bakFile.exists()) await bakFile.delete();
+        if (await tmpFile.exists()) await tmpFile.delete();
       }
     } catch (e) {
       debugPrint('Error clearing audit file: $e');
@@ -231,7 +424,7 @@ class AuditManager {
     debugPrint('🗑️ Audit Data Cleared (Memory + Disk)');
   }
 
-  /// Persist current state
+  /// Persist current state with atomic write and safe JSON encoding
   Future<void> _saveData() async {
     if (_isSaving) return;
     
@@ -239,15 +432,41 @@ class AuditManager {
     _hasPendingChanges = false;
     
     try {
-      final jsonString = json.encode(_localData);
+      final jsonString = json.encode(_localData, toEncodable: _toEncodable);
 
       if (kIsWeb) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_fileName, jsonString);
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$_fileName');
-        await file.writeAsString(jsonString, flush: true);
+        final finalFile = File('${directory.path}/$_fileName');
+        final tmpFile = File('${directory.path}/$_tmpFileName');
+        final bakFile = File('${directory.path}/$_bakFileName');
+
+        // 1. Write to temp file first with OS flush
+        await tmpFile.writeAsString(jsonString, flush: true);
+
+        // 2. Backup current final file before replacement
+        if (await finalFile.exists()) {
+          try {
+            await finalFile.copy(bakFile.path);
+          } catch (_) {}
+        }
+
+        // 3. Atomically replace final file
+        if (await tmpFile.exists()) {
+          try {
+            if (await finalFile.exists()) {
+              await finalFile.delete();
+            }
+            await tmpFile.rename(finalFile.path);
+          } catch (_) {
+            await tmpFile.copy(finalFile.path);
+            try {
+              await tmpFile.delete();
+            } catch (_) {}
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error saving audit data: $e');
@@ -267,7 +486,7 @@ class AuditManager {
     if (_hasPendingChanges || _isSaving) {
       // If already saving, wait for it and then check if more changes were made
       while (_isSaving) {
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       }
       if (_hasPendingChanges) {
         await _saveData();
@@ -575,6 +794,11 @@ class AuditManager {
           }
         }
 
+        final bakFile = File('${directory.path}/$fileName.bak');
+        final tmpFile = File('${directory.path}/$fileName.tmp');
+        if (await bakFile.exists()) await bakFile.delete();
+        if (await tmpFile.exists()) await tmpFile.delete();
+
         if (await file.exists()) {
           await cleanUpPhotos(file);
           await file.delete();
@@ -582,6 +806,10 @@ class AuditManager {
 
         if (draftId == 'current' || draftId == 'unplanned') {
           final curFile = File('${directory.path}/current_audit_data.json');
+          final curBak = File('${directory.path}/current_audit_data.json.bak');
+          final curTmp = File('${directory.path}/current_audit_data.json.tmp');
+          if (await curBak.exists()) await curBak.delete();
+          if (await curTmp.exists()) await curTmp.delete();
           if (await curFile.exists()) {
             await cleanUpPhotos(curFile);
             await curFile.delete();

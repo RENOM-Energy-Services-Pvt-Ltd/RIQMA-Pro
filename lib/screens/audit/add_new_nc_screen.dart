@@ -113,6 +113,9 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.draftId != null) {
+      AuditManager.instance.init(draftId: widget.draftId);
+    }
     _taskId = widget.initialTaskId ?? 'custom_nc_${DateTime.now().millisecondsSinceEpoch}';
 
     final data = widget.initialData ?? AuditManager.instance.getAnswer(_taskId) ?? {};
@@ -330,7 +333,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
     var selectedRootCause = _selectedRootCause;
     XFile? pickedImage;
     var isUploading = false;
-    var markAsOk = _status == 'OK';
 
     showDialog<void>(
       context: context,
@@ -438,23 +440,6 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Text('Mark Task as OK?'),
-                      const Spacer(),
-                      Switch(
-                        value: markAsOk,
-                        activeTrackColor: Colors.green.withValues(alpha: 0.5),
-                        activeThumbColor: Colors.green,
-                        onChanged: (val) {
-                          setDialogState(() {
-                            markAsOk = val;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
                   if (isUploading)
                     const Padding(
                       padding: EdgeInsets.only(top: 16.0),
@@ -499,10 +484,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                               _selectedRootCause = selectedRootCause;
                             }
                             _isCorrected = true;
-                            if (markAsOk) {
-                              _status = 'OK';
-                              _subStatus = null;
-                            }
+                            _status = 'Not OK';
                           });
 
                           if (navigator.canPop()) navigator.pop();
@@ -682,10 +664,10 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
       'description': '',
       'main_category_name': widget.mainCategoryName,
       'main_category_id': widget.mainCategoryRef.id,
-      'main_category_ref': widget.mainCategoryRef,
+      'main_category_ref': widget.mainCategoryRef.path,
       'sub_category_name': subCatName,
       'sub_category_id': subCatId,
-      if (widget.initialSubCategoryRef != null) 'sub_categories_ref': widget.initialSubCategoryRef,
+      if (widget.initialSubCategoryRef != null) 'sub_categories_ref': widget.initialSubCategoryRef!.path,
       'reference_name': _selectedReference ?? 'General',
       'referenceoftask': _selectedReference ?? 'General',
       'status': _status,
@@ -946,6 +928,16 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                 color: const Color(0xFF388E3C),
                                 icon: Icons.check_circle_outline,
                                 onTap: () {
+                                  if (_isCorrected) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('This NC has an On-Site Correction and remains "Not OK".'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                    return;
+                                  }
                                   setState(() {
                                     _status = 'OK';
                                     _subStatus = null;
@@ -995,7 +987,7 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                             Icon(Icons.check, color: Colors.white, size: 8),
                                             SizedBox(width: 2),
                                             Text(
-                                              'Fixed',
+                                              'Corrected',
                                               style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
                                             ),
                                           ],
@@ -1013,6 +1005,16 @@ class _AddNewNcScreenState extends State<AddNewNcScreen> {
                                 color: Colors.grey.shade600,
                                 icon: Icons.do_not_disturb_alt,
                                 onTap: () {
+                                  if (_isCorrected) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('This NC has an On-Site Correction and remains "Not OK".'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                    return;
+                                  }
                                   setState(() {
                                     _status = 'NA';
                                     _subStatus = null;
