@@ -67,6 +67,25 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_URL", "URL cannot be null", null)
                     }
                 }
+                "verifyApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path != null) {
+                        try {
+                            val file = java.io.File(path)
+                            if (!file.exists() || file.length() < 1024 * 1024) {
+                                result.success(false)
+                            } else {
+                                val pkgInfo = packageManager.getPackageArchiveInfo(path, 0)
+                                val isValid = pkgInfo != null && !pkgInfo.packageName.isNullOrEmpty()
+                                result.success(isValid)
+                            }
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

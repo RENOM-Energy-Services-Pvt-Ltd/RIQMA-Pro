@@ -53,6 +53,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
 
       final downloaded = await AppUpdateService.instance.hasDownloadedApk(
         targetVersion: widget.updateInfo.latestVersion,
+        expectedSize: widget.updateInfo.expectedFileSize,
       );
       final canInstall = await AppUpdateService.instance.canRequestPackageInstalls();
       if (mounted) {
@@ -87,6 +88,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
     if (canInstall) {
       final downloaded = await AppUpdateService.instance.hasDownloadedApk(
         targetVersion: widget.updateInfo.latestVersion,
+        expectedSize: widget.updateInfo.expectedFileSize,
       );
       if (downloaded && !_isDownloading && !_isInstalling) {
         await _installDownloadedApk();
@@ -115,7 +117,10 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
         return;
       }
 
-      await AppUpdateService.instance.installDownloadedApk(widget.updateInfo.latestVersion);
+      await AppUpdateService.instance.installDownloadedApk(
+        widget.updateInfo.latestVersion,
+        expectedSize: widget.updateInfo.expectedFileSize,
+      );
       if (mounted) {
         setState(() {
           _isInstalling = false;
@@ -141,6 +146,7 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
         } else {
           setState(() {
             _isInstalling = false;
+            _hasDownloadedApk = false; // Reset so user can re-download
             _errorMessage = err;
           });
         }
@@ -187,11 +193,18 @@ class _UpdateDialogState extends State<UpdateDialog> with WidgetsBindingObserver
             await partFile.delete();
           } catch (_) {}
         }
+        final apkFile = await AppUpdateService.instance.getDownloadedApkFile(widget.updateInfo.latestVersion);
+        if (await apkFile.exists()) {
+          try {
+            await apkFile.delete();
+          } catch (_) {}
+        }
       }
 
       await AppUpdateService.instance.downloadAndInstall(
         apkUrl: widget.updateInfo.apkUrl,
         targetVersion: widget.updateInfo.latestVersion,
+        expectedSize: widget.updateInfo.expectedFileSize,
         onProgress: (progress, received, total, [statusText]) {
           if (!mounted) return;
           final receivedMb = (received / (1024 * 1024)).toStringAsFixed(1);

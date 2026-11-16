@@ -60,14 +60,18 @@ jobs:
           name: RIQMA Pro ${{ steps.get_version.outputs.tag }}
           body: |
             ### RIQMA Pro ${{ steps.get_version.outputs.tag }} Update
+            - Bulletproof In-App Update & Android PackageParser Integrity:
+              * Fix "Parsing failed. Installation failed" caused by incomplete/interrupted APK downloads
+              * Native Android PackageParser verification (packageManager.getPackageArchiveInfo) before launching installer
+              * Dart-level ZIP End-of-Central-Directory (EOCD) signature validation
+              * Exact file-size enforcement using GitHub asset metadata
+              * Automatic detection and deletion of corrupt/partial cache files
             - Zero-Data-Loss Offline & Hybrid Audit Protection:
               * Fail-safe JSON serialization with universal fallback encoder (prevents DocumentReference crashes)
               * Atomic file writing with automatic .bak backup and corruption recovery
               * App-kill protection: immediate disk flush on lifecycle pause/inactive/detached
-              * Seamless hybrid online/offline unification (auto-merges planned and unplanned drafts for the same turbine)
-              * Guarded reference resolution (zero dummy overwrites on reconnect)
-            - Resumable Range-Engine In-App Updater with Auto-Retry
-            - Interactive Bottom Navigation Bar
+              * Seamless hybrid online/offline unification
+            - Interactive Native-style Navigation Bar
             - Dual Authentication: Firebase Auth with Renom Server fallback
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false

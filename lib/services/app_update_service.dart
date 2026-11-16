@@ -22,6 +22,7 @@ class AppUpdateInfo {
   final String currentVersion;
   final int currentBuildNumber;
   final String apkUrl;
+  final int expectedFileSize;
   final String releaseNotes;
   final bool forceUpdate;
   final bool hasUpdate;
@@ -32,6 +33,7 @@ class AppUpdateInfo {
     required this.currentVersion,
     required this.currentBuildNumber,
     required this.apkUrl,
+    this.expectedFileSize = 0,
     required this.releaseNotes,
     required this.forceUpdate,
     required this.hasUpdate,
@@ -135,16 +137,98 @@ class AppUpdateService {
     }
   }
 
-  /// Check if the APK for the SPECIFIC target version has already been fully downloaded
-  Future<bool> hasDownloadedApk({required String targetVersion}) async {
+  /// Validates whether the given file has a valid ZIP End of Central Directory (EOCD) signature
+  bool _hasValidZipEndRecord(File file) {
+    try {
+      final length = file.lengthSync();
+      if (length < 22) return false;
+      // Read the tail of the file (up to 4KB)
+      final readBytes = length < 4096 ? length : 4096;
+      final raf = file.openSync(mode: FileMode.read);
+      try {
+        raf.setPositionSync(length - readBytes);
+        final bytes = raf.readSync(readBytes);
+        // Search backwards for PK\x05\x06 (0x50, 0x4B, 0x05, 0x06)
+        for (var i = bytes.length - 4; i >= 0; i--) {
+          if (bytes[i] == 0x50 &&
+              bytes[i + 1] == 0x4B &&
+              bytes[i + 2] == 0x05 &&
+              bytes[i + 3] == 0x06) {
+            return true;
+          }
+        }
+        return false;
+      } finally {
+        raf.closeSync();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Verify an APK file for complete integrity (size, ZIP EOCD, and native Android PackageParser)
+  Future<bool> verifyApkFile(File file, {int? expectedSize}) async {
+    try {
+      if (!await file.exists()) return false;
+      final size = await file.length();
+
+      // RIQMA release APK is ~60MB; anything under 40MB is truncated/incomplete
+      if (size < 40 * 1024 * 1024) {
+        debugPrint('AppUpdateService: APK check failed - size $size is under 40MB minimum');
+        return false;
+      }
+
+      // If exact expected size is provided, enforce it
+      if (expectedSize != null && expectedSize > 0) {
+        if (size != expectedSize) {
+          debugPrint('AppUpdateService: APK size mismatch: $size != $expectedSize expected');
+          return false;
+        }
+      }
+
+      // Check ZIP End of Central Directory record in Dart
+      if (!_hasValidZipEndRecord(file)) {
+        debugPrint('AppUpdateService: APK failed ZIP EOCD check - truncated file');
+        return false;
+      }
+
+      // On Android, verify with native Android PackageParser
+      if (Platform.isAndroid) {
+        try {
+          final isValid = await _installerChannel.invokeMethod<bool>(
+            'verifyApk',
+            {'path': file.path},
+          );
+          if (isValid != true) {
+            debugPrint('AppUpdateService: Native verifyApk returned false - Android PackageParser failed');
+            return false;
+          }
+        } catch (e) {
+          debugPrint('AppUpdateService: Native verifyApk check error: $e');
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('AppUpdateService: verifyApkFile error: $e');
+      return false;
+    }
+  }
+
+  /// Check if the APK for the SPECIFIC target version has already been fully downloaded and verified
+  Future<bool> hasDownloadedApk({
+    required String targetVersion,
+    int? expectedSize,
+  }) async {
     try {
       final file = await getDownloadedApkFile(targetVersion);
       if (!await file.exists()) return false;
-      final size = await file.length();
-      // An APK is at least 20MB. If smaller, it was interrupted.
-      if (size < 20 * 1024 * 1024) {
+      final isValid = await verifyApkFile(file, expectedSize: expectedSize);
+      if (!isValid) {
+        // Immediately wipe incomplete/corrupted file to unblock user
         try {
           await file.delete();
+          debugPrint('AppUpdateService: Deleted corrupt/truncated APK: ${file.path}');
         } catch (_) {}
         return false;
       }
@@ -154,11 +238,22 @@ class AppUpdateService {
     }
   }
 
-  /// Installs an already-downloaded APK after verifying permissions
-  Future<void> installDownloadedApk(String targetVersion) async {
+  /// Installs an already-downloaded APK after verifying permissions and file integrity
+  Future<void> installDownloadedApk(String targetVersion, {int? expectedSize}) async {
     final file = await getDownloadedApkFile(targetVersion);
     if (!await file.exists()) {
       throw Exception('Downloaded update file not found for version $targetVersion.');
+    }
+
+    // Verify integrity before launching Android installer
+    final isValid = await verifyApkFile(file, expectedSize: expectedSize);
+    if (!isValid) {
+      try {
+        await file.delete();
+      } catch (_) {}
+      throw Exception(
+        'Downloaded APK was incomplete or corrupt. Please tap Update to download fresh.',
+      );
     }
 
     // 1. Verify Permission
@@ -202,6 +297,8 @@ class AppUpdateService {
           final releaseNotes = (data['release_notes'] ?? 'Bug fixes and performance improvements.').toString();
           final forceUpdate = data['force_update'] == true;
 
+          final expectedFileSize = int.tryParse((data['file_size'] ?? data['apk_size'] ?? '0').toString()) ?? 0;
+
           final hasUpdate = _isNewer(
             currentVersion: currentVersion,
             currentBuild: currentBuildNumber,
@@ -216,6 +313,7 @@ class AppUpdateService {
               currentVersion: currentVersion,
               currentBuildNumber: currentBuildNumber,
               apkUrl: apkUrl,
+              expectedFileSize: expectedFileSize,
               releaseNotes: releaseNotes,
               forceUpdate: forceUpdate,
               hasUpdate: true,
@@ -243,18 +341,23 @@ class AppUpdateService {
           final Map<String, dynamic> data =
               Map<String, dynamic>.from(jsonDecode(response.body) as Map);
 
-          // e.g. "v1.0.2" -> "1.0.2"
-          String rawTag = (data['tag_name'] ?? '').toString().replaceAll('v', '').trim();
+          final rawTag = (data['tag_name'] ?? '').toString().replaceAll('v', '').trim();
           final releaseNotes = (data['body'] ?? 'New release available with performance improvements.').toString();
 
-          // Locate APK asset in release
-          String apkUrl = '';
-          final assets = data['assets'] as List<dynamic>? ?? [];
-          for (final asset in assets) {
-            final name = (asset['name'] ?? '').toString().toLowerCase();
-            if (name.endsWith('.apk')) {
-              apkUrl = (asset['browser_download_url'] ?? '').toString();
-              break;
+          // Locate APK asset in release and capture exact size
+          var apkUrl = '';
+          var expectedFileSize = 0;
+          final rawAssets = data['assets'];
+          if (rawAssets is List) {
+            for (final item in rawAssets) {
+              if (item is Map) {
+                final name = (item['name'] ?? '').toString().toLowerCase();
+                if (name.endsWith('.apk')) {
+                  apkUrl = (item['browser_download_url'] ?? '').toString();
+                  expectedFileSize = int.tryParse((item['size'] ?? 0).toString()) ?? 0;
+                  break;
+                }
+              }
             }
           }
 
@@ -273,6 +376,7 @@ class AppUpdateService {
                 currentVersion: currentVersion,
                 currentBuildNumber: currentBuildNumber,
                 apkUrl: apkUrl,
+                expectedFileSize: expectedFileSize,
                 releaseNotes: releaseNotes,
                 forceUpdate: false,
                 hasUpdate: true,
@@ -306,27 +410,29 @@ class AppUpdateService {
     required String apkUrl,
     required String targetVersion,
     required void Function(double progress, int receivedBytes, int totalBytes, [String? statusText]) onProgress,
+    int? expectedSize,
   }) async {
     await cleanOldApks(keepVersion: targetVersion);
 
     final apkFile = await getDownloadedApkFile(targetVersion);
     final partFile = await getPartialApkFile(targetVersion);
 
-    // If fully downloaded APK already exists and is valid (> 25MB), install directly
+    // If fully downloaded APK already exists and passes integrity check, install directly
     if (await apkFile.exists()) {
-      final size = await apkFile.length();
-      if (size > 25 * 1024 * 1024) {
-        return installDownloadedApk(targetVersion);
+      final isValid = await verifyApkFile(apkFile, expectedSize: expectedSize);
+      if (isValid) {
+        return installDownloadedApk(targetVersion, expectedSize: expectedSize);
       } else {
         try {
           await apkFile.delete();
+          debugPrint('AppUpdateService: Removed corrupt existing APK before re-downloading.');
         } catch (_) {}
       }
     }
 
     const maxRetries = 10;
     var attempt = 0;
-    var totalBytes = 0;
+    var totalBytes = (expectedSize != null && expectedSize > 0) ? expectedSize : 0;
 
     while (attempt < maxRetries) {
       attempt++;
@@ -439,8 +545,14 @@ class AppUpdateService {
         if (totalBytes > 0 && finalSize < totalBytes) {
           throw Exception('Stream closed before full download ($finalSize of $totalBytes bytes)');
         }
-        if (finalSize < 25 * 1024 * 1024) {
+        if (finalSize < 40 * 1024 * 1024) {
           throw Exception('Downloaded file is unexpectedly small ($finalSize bytes)');
+        }
+
+        // Comprehensive verification of part file before promoting to .apk!
+        final isPartValid = await verifyApkFile(partFile, expectedSize: totalBytes > 0 ? totalBytes : null);
+        if (!isPartValid) {
+          throw Exception('Downloaded file failed integrity check ($finalSize bytes)');
         }
 
         // Success! Rename .part to final .apk
@@ -481,7 +593,7 @@ class AppUpdateService {
     }
 
     // Step 2: Verification and installer launch
-    await installDownloadedApk(targetVersion);
+    await installDownloadedApk(targetVersion, expectedSize: expectedSize);
   }
 
   /// Version comparison helper
